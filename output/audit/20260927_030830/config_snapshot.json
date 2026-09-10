@@ -1,0 +1,66 @@
+{
+  "target_chembl_id": "CHEMBL220",
+  "activity_endpoint": "IC50",
+  "raw_csv": "/media/notshadow/d5dd988b-c393-4302-aa45-32bcfc8463c2/WorkFolder/DrugDiscovery-BioInformatics/database/csv/Acetylcholinesterase_Homo_sapiens.csv",
+  "allowed_units": [
+    "10'5pM",
+    "10'6pM",
+    "10'3pM",
+    "nM"
+  ],
+  "unit_to_nM_factors_used_by_current_code": {
+    "10'5pM": 100.0,
+    "10'6pM": 1000.0,
+    "10'3pM": 1.0,
+    "nM": 1.0
+  },
+  "descriptor_list": [
+    "MolWt",
+    "MolLogP",
+    "NumHDonors",
+    "NumHAcceptors",
+    "TPSA",
+    "MaxPartialCharge",
+    "MinPartialCharge",
+    "NumHeteroatoms",
+    "NumRotatableBonds",
+    "FractionCSP3",
+    "NumAromaticRings",
+    "RingCount",
+    "NumAliphaticNitrogens",
+    "NumFormalCharge"
+  ],
+  "morgan_radius": 2,
+  "morgan_fingerprint_size": 1024,
+  "duplicate_grouping": "InChIkey",
+  "duplicate_aggregation": "median PIC50; rowwise abs deviation; median deviation per InChIKey",
+  "group_mad_threshold": 1.0,
+  "exact_duplicate_columns": [
+    "InChIkey",
+    "cleaned_smiles",
+    "PIC50"
+  ],
+  "relation_filter": "=",
+  "activity_filter_current": "standard_value <= 10000",
+  "activity_filter_comparison": "IC50_nM <= 10000",
+  "scaffold_split_fraction": 0.8,
+  "scaffold_allocation": "scaffolds sorted by group size descending; whole groups added to train while train count is below target",
+  "random_seeds_in_model_code": {
+    "optuna_tpe": 50,
+    "random_forest": 50
+  },
+  "python_version": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
+  "rdkit_version": "2026.03.4",
+  "pandas_version": "2.3.3",
+  "numpy_version": "2.4.3",
+  "scikit_learn_version": "1.9.0",
+  "scipy_version": "1.17.1",
+  "timestamp": "2026-09-27T03:09:15",
+  "git_commit": "e793ffa8b01f939193cee2cdca3c3d7a15495a3a",
+  "git_branch": "Correction-Branch",
+  "script_filename": "CDDgem.py",
+  "raw_row_count": 8793,
+  "final_row_count_current_filter": 4571,
+  "raw_csv_sha256": "492f42efacc8b49bfa607c0e6ffa66f4f40f5822094f68a54509e58e61ee4418",
+  "final_sorted_molecular_data_sha256": "b6ad18c926faf5f0221f33342bdc2a105a4bc84471d46ff7c9ed4f496ca20a62"
+}
