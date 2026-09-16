@@ -14,7 +14,7 @@ from rdkit.Chem.Scaffolds import MurckoScaffold
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.feature_selection import SelectFromModel
-from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import GroupKFold
 
 
 def data_retrieval_desc(target_name: str) -> pd.DataFrame:
@@ -598,6 +598,7 @@ class DataEng:
         return X_train_final, X_test_final, y_test,  y_train
     
     def column_addition(self):
+        
         """Reattach selected features to the original rows by index."""
         # we have to add back in such a way that the scaffold data does not inherently affect the dimensions here, but here it does not matter 
         
@@ -608,14 +609,19 @@ class DataEng:
         
         New learning - Numpy arrays erases pandas' memory layout and hence to perform vector operations we have to acutally keep datadeames as dataframes itself. 
         .values and all destroy the memory -- any (.) operator will actually kill it. So, we must do preservation of indexes 
-        
         '''
         
-        d1, d2, _ = self.modelledReduction()
+        d1, d2, _, __ = self.modelledReduction()
         
         joinee = pd.concat([d1, d2], axis = 0)
         merger = self.df.loc[joinee.index]
         final_df = pd.concat([merger, joinee], axis = 1)
+        cleanfile = DataCleaning.get_clean_filename() #overrriding concepts can be seen here 
+        
+        morgan_filename = f"{cleanfile}_morganbased"
+        morgan_path = self.path.parent/morgan_filename
+        
+        final_df.to_csv(f"{morgan_path}.csv", index=False )
         
         # here we dont want loc based index shuffle since we did not do random shuffling we just did scaffolding
         return final_df
@@ -625,8 +631,22 @@ class Model:
 
     def __init__(self):
         
-        self.df = DataEng.column_addition()
-        
+        self.df1 = DataEng.finaldrop()
+        self.df2 = DataEng.column_addition()
+    
+    max_depth  = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    n_estimators = [100, 200, 400, 800, 1000]
+    min_samples_split = [2, 5, 10, 20, 50]
+    min_samples_leaf = [1, 2, 4, 6, 8, 16] #everything must represent atleast that number of samples - samples ?
+    max_features = [1.0, 0.5, 0.3, "sqrt", "log2"]
+    bootstrap = [True, False] #sample of the training data and not the test data actually 
+    max_samples = [None, 0.5, 0.7, 0.9]
+    criterion = "absolute_error" #handling of noisy outliers 
+    n_jobs = -1
+    random_state = [0, 1, 10, 35, 42, 50, 70, 90, 100] #report any deviations to the data and document them
+    ccp_alpha = [0, 1e-15, 1e-4, 1e-3]
+    
+    
     
     def scaffold_based_split(self):
         
@@ -650,8 +670,8 @@ class Model:
                 test_indices.extend(row_numbers)
         
         
-        X_matrix = self.df[~self.df["PIC50"]].copy  
-        y_vector = self.df["PIC50"].copy 
+        X_matrix = self.df.drop(columns=["PIC50"]).copy()
+        y_vector = self.df["PIC50"].copy()
         
         X_train = X_matrix.loc[train_indices]
         y_train = y_vector[train_indices]
@@ -661,10 +681,17 @@ class Model:
         return X_train, y_train, X_test, y_test
 
     def RFmodela(self):
+        
         """
         Random Forest using Morgan fingerprints only.
         """
-        pass
+        
+        rf_model = RandomForestRegressor(
+            n_estimators = 200,
+            max_depth = 10,
+            random_state = 50,
+        )
+        
 
     def RFmodelb(self):
         """
