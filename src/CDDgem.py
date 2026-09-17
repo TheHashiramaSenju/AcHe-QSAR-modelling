@@ -14,7 +14,7 @@ from rdkit.Chem.Scaffolds import MurckoScaffold
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.feature_selection import SelectFromModel
-from sklearn.model_selection import GroupKFold
+from sklearn.model_selection import GroupKFold, GridSearchCV, RandomizedSearchCV
 
 
 def data_retrieval_desc(target_name: str) -> pd.DataFrame:
@@ -634,17 +634,17 @@ class Model:
         self.df1 = DataEng.finaldrop()
         self.df2 = DataEng.column_addition()
     
-    max_depth  = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    n_estimators = [100, 200, 400, 800, 1000]
-    min_samples_split = [2, 5, 10, 20, 50]
-    min_samples_leaf = [1, 2, 4, 6, 8, 16] #everything must represent atleast that number of samples - samples ?
-    max_features = [1.0, 0.5, 0.3, "sqrt", "log2"]
-    bootstrap = [True, False] #sample of the training data and not the test data actually 
-    max_samples = [None, 0.5, 0.7, 0.9]
-    criterion = "absolute_error" #handling of noisy outliers 
-    n_jobs = -1
-    random_state = [0, 1, 10, 35, 42, 50, 70, 90, 100] #report any deviations to the data and document them
-    ccp_alpha = [0, 1e-15, 1e-4, 1e-3]
+    param_grid_rf = {
+        'max_depth': [20, 30, 40, 50],
+        'n_estimators': [200, 400, 800, 2000],
+        'min_samples_split': [2, 5, 10],          \
+        'min_samples_leaf': [1, 2, 4, 6],
+        'max_features': [1.0, 0.5, 'sqrt', 'log2'],
+        'bootstrap': [True, False],
+        'max_samples': [0.6, 0.8, 1.0],           # only used when bootstrap=True
+        'criterion': ['absolute_error'],          # or 'squared_error', 'friedman_mse', ...
+        'ccp_alpha': [0, 1e-15, 1e-4, 1e-3]
+    }
     
     
     
@@ -685,14 +685,24 @@ class Model:
         """
         Random Forest using Morgan fingerprints only.
         """
-        
-        rf_model = RandomForestRegressor(
-            n_estimators = 200,
-            max_depth = 10,
-            random_state = 50,
+        rf = RandomForestRegressor(
+            n_jobs = -1,
+            random_state = 50
         )
         
-
+        grid_rf = GridSearchCV(
+            estimator = rf, 
+            param_grid = self.param_grid_rf,
+            cv = 5, 
+            scoring = "neg_mean_absolute_error", 
+            n_jobs = -1, 
+            verbose = 2, 
+            return_train_score = True 
+        )
+        
+        
+        
+    #Never let the test set participate in model decisions.
     def RFmodelb(self):
         """
         Random Forest using RDKit molecular descriptors only.
