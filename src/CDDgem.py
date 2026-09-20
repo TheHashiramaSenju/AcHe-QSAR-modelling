@@ -20,6 +20,7 @@ from sklearn.metrics import mean_absolute_error
 from rdkit.Chem import Descriptors
 from rdkit.Chem import Lipinski
 import multiprocessing as mp 
+from sklearn.model_selection import GroupKFold
 
 
 def data_retrieval_desc(target_name: str) -> pd.DataFrame:
@@ -668,7 +669,7 @@ class DataEng:
     
     def scaffoldX_CrossValidation(self):
         
-        X_train, _, _, _ = self.scaffold_based_split()
+        X_train, _, _, _ = DataEng.scaffold_based_split()
         
         df = X_train
         groups = df.groupby("Scaffold_InChI", dropna = False).groups
@@ -745,9 +746,10 @@ class DataEng:
       
 class Model:
 
-    def __init__(self):
+    def __init__(self, path: Path):
+        self.de = DataEng(path=path)
+        self.df_morgan. self.df_rdkit = self.de.molecular_desc()
         
-        self.df_morgan, self.df_rdkit = DataEng.molecular_desc()
         #for adding the RDkit features alone in this
         
 
@@ -772,12 +774,14 @@ class Model:
             
         model = RandomForestRegressor(**params)
         
+        cv = GroupKFold(n_splits =  5)
         #cross validation score
         score = cross_val_score(
             model, 
             X_train,
             y_train,
-            cv = 5,
+            groups = self.de.scaffoldX_CrossValidation(),
+            cv = cv,
             scoring="neg_mean_absolute_error",
             n_jobs=-1
         )
@@ -792,7 +796,12 @@ class Model:
         
         #we will try optuna - using Tree-structured Parzen Estimator (TPE) - Bayesian optimization method
         
-        X_train, y_train, X_test, y_test = self.scaffold_based_split()
+        X_train, y_train, X_test, y_test = self.de.scaffold_based_split()
+        scaffolds_train = X_train["Scaffold_InChI"].values 
+        cols_to_drop = ["Scaffold_InChI", "cleaned_smiles", "InChIkey", "scaffold"]
+        
+        X_train_model = X_train.drop(columns=[c for c in cols_to_drop if c in X_train.columns])
+        X_test_model  = X_test.drop(columns=[c for c in cols_to_drop if c in X_test.columns])
         
         study = optuna.create_study(
             direction = "maximize", 
@@ -801,7 +810,7 @@ class Model:
         )
         
         study.optimize(
-            lambda trial : self.objective(trial, X_train, y_train),
+            lambda trial : self.objective(trial, X_train_model, y_train, scaffolds_train),
             n_trials = 100,
             show_progress_bar = True
         )
