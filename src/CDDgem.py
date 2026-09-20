@@ -14,7 +14,12 @@ from rdkit.Chem.Scaffolds import MurckoScaffold
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.feature_selection import SelectFromModel
-from sklearn.model_selection import GroupKFold, GridSearchCV, RandomizedSearchCV
+from sklearn.model_selection import cross_val_score
+import optuna 
+from sklearn.metrics import mean_absolute_error
+from rdkit.Chem import Descriptors
+from rdkit.Chem import Lipinski
+import multiprocessing as mp 
 
 
 def data_retrieval_desc(target_name: str) -> pd.DataFrame:
@@ -457,7 +462,7 @@ class DataEng:
         return scaffold_smiles
     
     
-    def finaldrop(self):
+    def finaldrop(self) -> pd.DataFrame:
         
         final = DataCleaning.get_clean_filename()
         pipeline_path = self.path.parent/final
@@ -485,7 +490,7 @@ class DataEng:
             index=self.df.index,
         )
         
-    def scaffold(self):
+    def scaffold(self) -> pd.DataFrame: 
         """Split whole scaffold groups while preserving source row indexes."""
         
         y_vector = self.df["PIC50"]
@@ -552,7 +557,8 @@ class DataEng:
         )
         
         
-    def correlation_handling(self, threshold = 0.90):
+    def correlation_handling(self, threshold = 0.90) -> pd.DataFrame:
+        
         """Remove correlated columns using correlations learned from training data."""
         X_train, X_test, y_train, y_test, updated_masks = self.variance_thresholding()
         #drops one of them to prevent *Impoortance Dilution* in Random-Forests
@@ -577,8 +583,8 @@ class DataEng:
         
         return X_train_clean, X_test_clean, y_train, y_test
     
-    
-    def modelledReduction(self):
+    def modelledReduction(self)-> pd.DataFrame:
+        
         """Select features using a forest fitted only on training targets."""
         X_train, X_test, y_train, y_test = self.correlation_handling()
         rf = RandomForestRegressor(n_estimators=100, random_state = 50, n_jobs=-1 )
@@ -597,7 +603,7 @@ class DataEng:
         
         return X_train_final, X_test_final, y_test,  y_train
     
-    def column_addition(self):
+    def column_addition(self) -> pd.DataFrame:
         
         """Reattach selected features to the original rows by index."""
         # we have to add back in such a way that the scaffold data does not inherently affect the dimensions here, but here it does not matter 
@@ -625,37 +631,17 @@ class DataEng:
         
         # here we dont want loc based index shuffle since we did not do random shuffling we just did scaffolding
         return final_df
-  
-      
-class Model:
 
-    def __init__(self):
+    
+    def scaffold_based_split(self) -> pd.DataFrame:
         
-        self.df1 = DataEng.finaldrop()
-        self.df2 = DataEng.column_addition()
-    
-    param_grid_rf = {
-        'max_depth': [20, 30, 40, 50],
-        'n_estimators': [200, 400, 800, 2000],
-        'min_samples_split': [2, 5, 10],          \
-        'min_samples_leaf': [1, 2, 4, 6],
-        'max_features': [1.0, 0.5, 'sqrt', 'log2'],
-        'bootstrap': [True, False],
-        'max_samples': [0.6, 0.8, 1.0],           # only used when bootstrap=True
-        'criterion': ['absolute_error'],          # or 'squared_error', 'friedman_mse', ...
-        'ccp_alpha': [0, 1e-15, 1e-4, 1e-3]
-    }
-    
-    
-    
-    def scaffold_based_split(self):
-        
-        groups = self.df.groupby("Scaffold_InChI", dropna=False).groups
+        df = self.column_addition()
+        groups = df.groupby("Scaffold_InChI", dropna=False).groups
         
         #so here the entire index is preserved for ordering and re-ordering. 
         sorted_keys = sorted(groups.keys(), key = lambda k : len(groups[k]), reverse = True) #ascending or descenfing comes fromthe lamda here actually and we reverse fo rbg uckets to be on the top
         
-        target_train_size = int(0.8 * len(self.df))
+        target_train_size = int(0.8 * len(df))
         train_indices = []
         test_indices = []
         
@@ -670,8 +656,8 @@ class Model:
                 test_indices.extend(row_numbers)
         
         
-        X_matrix = self.df.drop(columns=["PIC50"]).copy()
-        y_vector = self.df["PIC50"].copy()
+        X_matrix = df.drop(columns=["PIC50"]).copy()
+        y_vector = df["PIC50"].copy()
         
         X_train = X_matrix.loc[train_indices]
         y_train = y_vector[train_indices]
@@ -679,30 +665,172 @@ class Model:
         y_test = y_vector[test_indices]
         
         return X_train, y_train, X_test, y_test
+    
+    def scaffoldX_CrossValidation(self):
+        
+        X_train, _, _, _ = self.scaffold_based_split()
+        
+        df = X_train
+        groups = df.groupby("Scaffold_InChI", dropna = False).groups
+        
+        sorted_keys = sorted(groups.keys(), key = lambda k: len(groups[k]), reverse=True)
+        
+        sorted = []
+        for scaffold in sorted_keys:
+            row_numbers = groups[scaffold]
+            sorted.extend(row_numbers)
+        
+        df = pd.DataFrame(sorted)
+        
+        return df 
 
+    
+    def molecular_desc(self):
+        df1 = self.finaldrop()
+        df2 = self.column_addition()
+        remover = SaltRemover()
+
+        bio_descriptors = {
+            'MolWt': Descriptors.MolWt,
+            'MolLogP': Descriptors.MolLogP,
+            'NumHDonors': Lipinski.NumHDonors,
+            'NumHAcceptors': Lipinski.NumHAcceptors,
+            'TPSA': Descriptors.TPSA,
+            'MaxPartialCharge': Descriptors.MaxPartialCharge,
+            'MinPartialCharge': Descriptors.MinPartialCharge,
+            'NumHeteroatoms': Lipinski.NumHeteroatoms,
+            'NumRotatableBonds': Lipinski.NumRotatableBonds,
+            'FractionCSP3': Lipinski.FractionCSP3,
+            'NumAromaticRings': Lipinski.NumAromaticRings,
+            'RingCount': Lipinski.RingCount,
+            'NumAliphaticNitrogens': Lipinski.NumAliphaticNitrogens,
+            'NumFormalCharge': Chem.GetFormalCharge,
+        }
+
+        def single_smiles(smiles):
+            if not isinstance(smiles, str) or not smiles.strip():
+                return {key: None for key in bio_descriptors}
+
+            raw_mol = Chem.MolFromSmiles(smiles)
+            if raw_mol is None:
+                return {key: None for key in bio_descriptors}
+
+            mol = remover.StripMol(raw_mol)
+
+            try:
+                Chem.rdPartialCharges.ComputeGasteigerCharges(mol)
+                features = {}
+                for name, func in bio_descriptors.items():
+                    val = func(mol)
+                    if val != val or val == float('inf') or val == float('-inf'):
+                        features[name] = None
+                    else:
+                        features[name] = val
+                return features
+            except Exception:
+                return {key: None for key in bio_descriptors}
+
+        smiles_list = df1['cleaned_smiles'].tolist()
+        print(mp.cpu_count())
+
+        with mp.Pool(processes=max(1, mp.cpu_count())) as pool:
+            results = pool.map(single_smiles, smiles_list)
+
+        features_df = pd.DataFrame(results)
+        final_df = pd.concat([df1.reset_index(drop=True), features_df.reset_index(drop=True)], axis=1)
+        combined_df = pd.concat([df2.reset_index(drop=True), features_df.reset_index(drop=True)], axis=1)
+
+        return final_df, combined_df
+            
+      
+class Model:
+
+    def __init__(self):
+        
+        self.df_morgan, self.df_rdkit = DataEng.molecular_desc()
+        #for adding the RDkit features alone in this
+        
+
+    def objective(self, trial, X_train, y_train):
+        
+        bootstrap = trial.suggest_categorical('bootstrap', [True, False])
+        params = {
+            'n_estimators' : trial.suggest_int('n_estimators', 200, 2000),
+            'max_depth' : trial.suggest_int('max_depth', 20, 50),
+            'min_samples_split' : trial.suggest_int('min_samples_split', 2, 20), 
+            'min_samples_leaf' : trial.suggest_int('min_samples_leaf', 1, 10),
+            'max_features' : trial.suggest_categorical('max_features', [1.0, 0.5, 'sqrt', 'log2']),
+            'bootstrap' : bootstrap,
+            'criterion' : 'absolute_error', 
+            'ccp_alpha' : trial.suggest_float('ccp_alpha', 1e-15, 1e-3, log=True),
+            'n_jobs' : -1,
+            'random_state' : 50
+        }
+        
+        if bootstrap:
+            params['max_samples'] = trial.suggest_float('max_samples', 0.6, 1.0)
+            
+        model = RandomForestRegressor(**params)
+        
+        #cross validation score
+        score = cross_val_score(
+            model, 
+            X_train,
+            y_train,
+            cv = 5,
+            scoring="neg_mean_absolute_error",
+            n_jobs=-1
+        )
+        
+        return score.mean() #maximizing because of negative MAE?
+        
     def RFmodela(self):
         
         """
         Random Forest using Morgan fingerprints only.
         """
-        rf = RandomForestRegressor(
-            n_jobs = -1,
-            random_state = 50
+        
+        #we will try optuna - using Tree-structured Parzen Estimator (TPE) - Bayesian optimization method
+        
+        X_train, y_train, X_test, y_test = self.scaffold_based_split()
+        
+        study = optuna.create_study(
+            direction = "maximize", 
+            sampler = optuna.samplers.TPESampler(seed=50),
+            study_name = 'RF_Scaffold_Split'
         )
         
-        grid_rf = GridSearchCV(
-            estimator = rf, 
-            param_grid = self.param_grid_rf,
-            cv = 5, 
-            scoring = "neg_mean_absolute_error", 
-            n_jobs = -1, 
-            verbose = 2, 
-            return_train_score = True 
+        study.optimize(
+            lambda trial : self.objective(trial, X_train, y_train),
+            n_trials = 100,
+            show_progress_bar = True
         )
         
+        #printing results. 
+        print(f"Best MAE CV:", -study.best_value)
+        print("Best params:")
         
+        for k, v in study.best_params.items():
+            print(f"  {k}: {v}")
+
+        # 5. Train final model with best parameters
+        best_params = study.best_params.copy()
+        best_params.update({
+            'criterion': 'absolute_error',
+            'n_jobs': -1,
+            'random_state': 50
+        })
+
+        final_model = RandomForestRegressor(**best_params)
+        final_model.fit(X_train, y_train)
         
-    #Never let the test set participate in model decisions.
+        y_pred = final_model.predict(X_test)
+        test_mae = mean_absolute_error(y_test, y_pred)
+        print(f"\nTest MAE: {test_mae:.4f}")
+
+        return final_model, study
+        
+
     def RFmodelb(self):
         """
         Random Forest using RDKit molecular descriptors only.
