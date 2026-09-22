@@ -742,18 +742,82 @@ class DataEng:
         combined_df = pd.concat([df2.reset_index(drop=True), features_df.reset_index(drop=True)], axis=1)
 
         return final_df, combined_df
+    
+    def scaffold_RDKit(self):
+        
+        df, _ = self.molecular_desc()
+        groups = df.groupby("Scaffold_InChI", dropna=False).groups
+        
+        sorted_keys = sorted(groups.keys(), key = lambda k: len(groups[k]), reverse=True) #sort those key and their data
+
+        target_train_size = int(0.8 * len(df))
+        train_indices = []
+        test_indices = []
+        
+        for scaffold in sorted_keys:
             
-      
+            row_number = groups[scaffold]
+            
+            if len(train_indices) < target_train_size: 
+                train_indices.extend(row_number)
+            else:
+                test_indices.extend(row_number)
+                
+        X_matrix = df.drop(columns = ["PIC50"]).copy()
+        y_vector = df["PIC50"].copy()
+        
+        X_train = X_matrix.loc[train_indices]
+        y_train = y_vector.loc[train_indices]
+        X_test = X_matrix.loc[test_indices]
+        y_test = y_vector.loc[test_indices]
+        
+        return(
+            pd.DataFrame(X_train), 
+            pd.DataFrame(y_train), 
+            pd.DataFrame(X_test), 
+            pd.DataFrame(y_test)       
+        ) 
+    
+    def scaffold_combined(self):
+        
+        _, df  = self.molecular_desc()
+        
+        groups  = df.groupby("Scaffold_InChI", dropna=False).groups
+        sorted_keys = sorted(groups.keys(), lambda k: len(groups[k]), reverse = True )
+        
+        length = (0.8 * len(df))
+        train_indices = []
+        test_indices = []
+        
+        for scaffold in sorted_keys:
+            
+            row_numbers = groups[scaffold] #comes as indexes
+            
+            if (len(row_numbers) < length):
+                train_indices.extend(row_numbers)
+            
+            else:
+                test_indices.extend(row_numbers)
+        
+        X_matrix = df.drop(columns=["PIC50"]).copy()
+        y_vector = df["PIC50"].copy()
+        
+        X_train = X_matrix.loc[train_indices]
+        y_train = y_vector.loc[train_indices]
+        X_test = X_matrix.loc[test_indices]
+        y_test = y_vector.loc[test_indices]
+        
+        return X_train, y_train, X_test, y_test
+        
+        
 class Model:
 
     def __init__(self, path: Path):
+        
         self.de = DataEng(path=path)
-        self.df_morgan. self.df_rdkit = self.de.molecular_desc()
+        self.df_morgan, self.df_rdkit = self.de.molecular_desc()
         
-        #for adding the RDkit features alone in this
-        
-
-    def objective(self, trial, X_train, y_train):
+    def objective(self, trial, X_train, y_train, scaffolds_train):
         
         bootstrap = trial.suggest_categorical('bootstrap', [True, False])
         params = {
@@ -771,23 +835,23 @@ class Model:
         
         if bootstrap:
             params['max_samples'] = trial.suggest_float('max_samples', 0.6, 1.0)
-            
+        
         model = RandomForestRegressor(**params)
         
         cv = GroupKFold(n_splits =  5)
-        #cross validation score
         score = cross_val_score(
             model, 
             X_train,
             y_train,
-            groups = self.de.scaffoldX_CrossValidation(),
+            groups = scaffolds_train,
             cv = cv,
             scoring="neg_mean_absolute_error",
             n_jobs=-1
         )
         
         return score.mean() #maximizing because of negative MAE?
-        
+
+
     def RFmodela(self):
         
         """
@@ -797,6 +861,7 @@ class Model:
         #we will try optuna - using Tree-structured Parzen Estimator (TPE) - Bayesian optimization method
         
         X_train, y_train, X_test, y_test = self.de.scaffold_based_split()
+        
         scaffolds_train = X_train["Scaffold_InChI"].values 
         cols_to_drop = ["Scaffold_InChI", "cleaned_smiles", "InChIkey", "scaffold"]
         
@@ -815,14 +880,14 @@ class Model:
             show_progress_bar = True
         )
         
-        #printing results. 
+        
+    
         print(f"Best MAE CV:", -study.best_value)
         print("Best params:")
         
         for k, v in study.best_params.items():
             print(f"  {k}: {v}")
 
-        # 5. Train final model with best parameters
         best_params = study.best_params.copy()
         best_params.update({
             'criterion': 'absolute_error',
@@ -831,26 +896,104 @@ class Model:
         })
 
         final_model = RandomForestRegressor(**best_params)
-        final_model.fit(X_train, y_train)
+        final_model.fit(X_train_model,  y_train)
         
-        y_pred = final_model.predict(X_test)
+        y_pred = final_model.predict(X_test_model)
         test_mae = mean_absolute_error(y_test, y_pred)
         print(f"\nTest MAE: {test_mae:.4f}")
 
         return final_model, study
-        
-
+    
+    
     def RFmodelb(self):
+        
         """
-        Random Forest using RDKit molecular descriptors only.
+        Random Forest using RDKit molecular descriptors only. 
         """
-        pass
+        
+        X_train, y_train, X_test, y_test  = self.de.scaffold_RDKit()
+        scaffold_values = X_train["Scaffold_InChI"].values
+        columns_to_drop = ["action_type", "target_pref_name", "target_tax_id", "bao_endpoint", 
+                           "assay_chembl_id", "target_chembl_id", "record_id", "molecule_chembl_id", 
+                           "parent_molecule_chembl_id", "bao_label", "standard_type", "standard_units", "standard_flag", "Scaffold_InChI"]
+        
+        X_train_model = X_train.drop(columns = [c for c in columns_to_drop])
+        X_test_model = X_test.drop(columns = [c for c in columns_to_drop])
+        
+        study = optuna.create_study(
+            direction = "maximize",
+            sampler = optuna.sampler.TPESampler(seed=50), 
+            study_name = "RF_RDKit_scaffold"
+        )
+        
+        study.optimize(
+            lambda trial : self.objective(trial, X_train_model, y_train, scaffold_values), 
+            n_trials = 100, 
+            show_progress_bar = True
+        )
+        
+        for k, v in study.best_params.items():
+            print(f"{k}: {v}")
+        
+        best_params = study.best_params.copy()
+        best_params.update({
+            'criterion' : 'absolute_error', 
+            'n_jobs' : -1,
+            'random_state': 50
+        })
+        
+        final_model = RandomForestRegressor(**best_params)
+        final_model.fit(X_train_model, y_train)
+        
+        y_pred = final_model.predict(X_test_model)
+        test_mae = mean_absolute_error(y_test, y_pred)
+        print(f"Test MAE : {test_mae}")
+        
+        return final_model, study       
 
     def RFmodelc(self):
+        
         """
         Random Forest using Morgan fingerprints + RDKit descriptors.
         """
-        pass
+        
+        X_train, y_train, X_test, y_test = self.de.scaffold_combined()
+        scaffold_train = X_train["scaffold_InChI"].values #we can use key for sampling but how are values getting used here ?
+        columns_to_drop = ["action_type", "target_pref_name", "target_tax_id", "bao_endpoint", 
+                           "assay_chembl_id", "target_chembl_id", "record_id", "molecule_chembl_id", 
+                           "parent_molecule_chembl_id", "bao_label", "standard_type", "standard_units", "standard_flag", "Scaffold_InChI"]
+        
+        X_train_model = X_train.drop(columns=[c for c in columns_to_drop])
+        X_test_model = X_test.drop(columns = [c for c in columns_to_drop])
+        
+        study = optuna.create_study(
+            direction = "maximize", 
+            sampler = optuna.sampler.TPESampler(seed=50), 
+            study_name = "RF_RDKitMorgan_Split"
+        )
+        
+        study.optimize(
+            lambda trial : self.objective(trial, X_train_model, X_test_model, scaffold_train),
+            n_trials = 100, 
+            show_progress_bar = True
+        )
+        
+        for k, v in study.best_params.items():
+            print(f"{k} : {v}")
+        
+        best_params  = study.best_params.copy()
+        best_params.update({
+            'criterion' : 'absolute_error', 
+            'n_jobs' : -1,
+            'random_state': 50
+        })
+        
+        final_model = RandomForestRegressor(**best_params)
+        final_model.fit(X_train_model, y_train) 
+        test_mae = mean_absolute_error(y_test, y_pred)
+        print(f"MAE scored {MAE}")
+        
+        return final_model, study
 
 
 class Validation:
@@ -859,9 +1002,6 @@ class Validation:
         pass
 
     def random_split(self):
-        pass
-
-    def scaffold_split(self):
         pass
 
     def group_split(self):
@@ -874,15 +1014,6 @@ class Validation:
 class AblationStudies:
 
     def __init__(self):
-        pass
-
-    def full_model(self):
-        pass
-
-    def fingerprint_only(self):
-        pass
-
-    def descriptors_only(self):
         pass
 
     def assay_context(self):
