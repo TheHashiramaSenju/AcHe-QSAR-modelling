@@ -846,7 +846,7 @@ class Model:
                 "n_jobs": 1,
                 "random_state": 50,
             }
-            model = xgb.XGBRegressor(**params)
+            model = xgb.XGBRegressor(**params) 
         
         if model_type == "LightGBM":
             params = {

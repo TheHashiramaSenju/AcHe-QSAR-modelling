@@ -2,6 +2,7 @@
 __pycache__/
 *.py[codz]
 *$py.class
+CDDgem.py
 
 # C extensions
 *.so
@@ -219,3 +220,4 @@ __marimo__/
 src/fileoperations.py
 src/maintenancecopy.py
 Notes-Excalidraw/Untitled.md
+src/CDDgem.py
