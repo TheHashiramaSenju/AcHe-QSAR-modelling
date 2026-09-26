@@ -9,7 +9,6 @@ import pandas as pd
 from rdkit import Chem 
 from rdkit.Chem.SaltRemover import SaltRemover
 from scipy.stats import median_abs_deviation
-from rdkit.Chem import AllChem
 from rdkit.Chem.Scaffolds import MurckoScaffold
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.ensemble import RandomForestRegressor
@@ -21,6 +20,17 @@ from rdkit.Chem import Descriptors
 from rdkit.Chem import Lipinski
 import multiprocessing as mp 
 from sklearn.model_selection import GroupKFold
+import joblib 
+from rdkit.Chem import rdFingerprintGenerator
+import lightgbm as lgb
+import xgboost as xgb
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import mean_squared_error, r2_score
+from scipy.stats import pearsonr, spearmanr
+
+OUTPUT_DIR = "/media/notshadow/d5dd988b-c393-4302-aa45-32bcfc8463c2/WorkFolder/DrugDiscovery-BioInformatics/output"
+
 
 
 def data_retrieval_desc(target_name: str) -> pd.DataFrame:
@@ -189,7 +199,7 @@ class DataCleaning:
             print(f"Skipped {len(self.mismatch)} corrupted/mismatched rows.")
         return dataset_clean 
     
-    def get_clean_filename(self) -> str:
+    def get_clean_filename(self):
         filename = self.filename
         print(filename)
         if filename.startswith('.'):
@@ -228,6 +238,9 @@ class DataCleaning:
         
         if mol is None:
             return None 
+
+        if mol.GetNumAtoms() == 0:
+            return None
     
         inchikey = Chem.MolToInchiKey(mol)
         
@@ -368,12 +381,12 @@ class DataCleaning:
             -1 * np.log10(dataframe["IC50"] * 10 ** -9),
             -1 * dataframe["standard_value"],
             dataframe["standard_value"],
-            -9 + dataframe["standard_value"]
+            9 - dataframe["standard_value"]
         ]
         
         dataframe["PIC50"] = np.select(conditions, choices) #dropping instinct
         dataframe["PIC50"] = dataframe["PIC50"].round(5)
-        #the conditions are not getting applied 
+
         
         return dataframe        
         
@@ -421,9 +434,62 @@ class DataCleaning:
         return output_path
     
 
+def calculate_molecular_descriptors(smiles):
+    def num_aliphatic_nitrogens(mol):
+        return sum(
+            atom.GetAtomicNum() == 7 and not atom.GetIsAromatic()
+            for atom in mol.GetAtoms()
+        )
+
+    bio_descriptors = {
+        "MolWt": Descriptors.MolWt,
+        "MolLogP": Descriptors.MolLogP,
+        "NumHDonors": Lipinski.NumHDonors,
+        "NumHAcceptors": Lipinski.NumHAcceptors,
+        "TPSA": Descriptors.TPSA,
+        "MaxPartialCharge": Descriptors.MaxPartialCharge,
+        "MinPartialCharge": Descriptors.MinPartialCharge,
+        "NumHeteroatoms": Lipinski.NumHeteroatoms,
+        "NumRotatableBonds": Lipinski.NumRotatableBonds,
+        "FractionCSP3": Lipinski.FractionCSP3,
+        "NumAromaticRings": Lipinski.NumAromaticRings,
+        "RingCount": Lipinski.RingCount,
+        "NumAliphaticNitrogens": num_aliphatic_nitrogens,
+        "NumFormalCharge": Chem.GetFormalCharge,
+    }
+
+    empty_features = {key: None for key in bio_descriptors}
+    if not isinstance(smiles, str) or not smiles.strip():
+        return empty_features
+
+    raw_mol = Chem.MolFromSmiles(smiles)
+    if raw_mol is None:
+        return empty_features
+
+    mol = SaltRemover().StripMol(raw_mol)
+    try:
+        Chem.rdPartialCharges.ComputeGasteigerCharges(mol)
+        features = {}
+        for name, descriptor in bio_descriptors.items():
+            value = descriptor(mol)
+            if value != value or value == float("inf") or value == float("-inf"):
+                features[name] = None
+            else:
+                features[name] = value
+        return features
+    except Exception:
+        return empty_features
+
+
 class DataEng:
-    
+
+    morgan_generator = rdFingerprintGenerator.GetMorganGenerator(
+        radius=2,
+        fpSize=1024,
+    )
+
     def __init__(self, path:Path):
+        
         self.path = Path(path) if isinstance(path, str) else path
         if not self.path.exists():
             raise FileNotFoundError(f"Feature CSV file not found: {self.path}")
@@ -431,12 +497,18 @@ class DataEng:
         # Load once and retain the original row index for every later operation.
         self.df = pd.read_csv(self.path)
         self.filename = self.path.name if self.path.exists() else "unknown_file"
+
         
         if "cleaned_smiles" not in self.df.columns:
             raise KeyError("Feature CSV must contain a 'cleaned_smiles' column.")
+        
+        self.csv_file_path = self.path.parent
+        
+        
+        
     
     @staticmethod
-    def morgan_fingerprinting_s_method(smiles_string: str, radius: int = 2, nBits: int = 2) -> np.ndarray:       
+    def morgan_fingerprinting_s_method(smiles_string: str, radius: int = 2, nBits: int = 1024) -> np.ndarray:       
         if pd.isna(smiles_string):
             return np.zeros(nBits, dtype=np.uint8)
 
@@ -444,8 +516,8 @@ class DataEng:
         if mol is None:
             return np.zeros(nBits, dtype=np.uint8)
         
-        finger_printing = AllChem.GetMorganFingerprintAsBitVect(mol, radius=radius, nBits=nBits)
-        return np.asarray(finger_printing, dtype=np.uint8)
+        fingerprint = DataEng.morgan_generator.GetFingerprint(mol)
+        return np.asarray(fingerprint, dtype=np.uint8)
     
     @staticmethod
     def mscl(smiles):
@@ -458,6 +530,9 @@ class DataEng:
             return None
         
         scaffold = MurckoScaffold.GetScaffoldForMol(mol)
+        if scaffold.GetNumAtoms() == 0:
+            return None
+
         scaffold_smiles = Chem.MolToSmiles(scaffold)
         
         return scaffold_smiles
@@ -465,14 +540,14 @@ class DataEng:
     
     def finaldrop(self) -> pd.DataFrame:
         
-        final = DataCleaning.get_clean_filename()
+        final = Path(self.filename).stem
         pipeline_path = self.path.parent/final
         
         columns_to_drop = ["action_type", "target_pref_name", "target_tax_id", "bao_endpoint", 
                            "assay_chembl_id", "target_chembl_id", "record_id", "molecule_chembl_id", 
                            "parent_molecule_chembl_id", "bao_label", "standard_type", "standard_units", "standard_flag"]
         
-        self.df = self.df.drop(columns=columns_to_drop)
+        self.df = self.df.drop(columns=columns_to_drop, errors="ignore")
         
         self.df.to_csv(f"{pipeline_path}_pipeline", index=False)
         
@@ -510,7 +585,12 @@ class DataEng:
         
         df["Scaffold_InChI"] = df["scaffold"].apply(DataCleaning.InChIKeyConversion)
         
-        groups = df.groupby("Scaffold_InChI", dropna=False).groups
+        df["Scaffold_InChI"] = df["Scaffold_InChI"].fillna("__NO_SCAFFOLD__")
+        df["Scaffold_InChI"] = df["Scaffold_InChI"].astype("object").where(
+            df["Scaffold_InChI"].notna(),
+            "__NO_SCAFFOLD__",
+        )
+        groups = df.groupby("Scaffold_InChI").groups
         
         #so here the entire index is preserved for ordering and re-ordering. 
         sorted_keys = sorted(groups.keys(), key = lambda k : len(groups[k]), reverse = True) #ascending or descenfing comes fromthe lamda here actually and we reverse fo rbg uckets to be on the top
@@ -623,7 +703,11 @@ class DataEng:
         joinee = pd.concat([d1, d2], axis = 0)
         merger = self.df.loc[joinee.index]
         final_df = pd.concat([merger, joinee], axis = 1)
-        cleanfile = DataCleaning.get_clean_filename() #overrriding concepts can be seen here 
+        final_df["scaffold"] = final_df["cleaned_smiles"].apply(DataEng.mscl)
+        final_df["Scaffold_InChI"] = final_df["scaffold"].apply(
+            DataCleaning.InChIKeyConversion
+        )
+        cleanfile = Path(self.filename).stem #overrriding concepts can be seen here 
         
         morgan_filename = f"{cleanfile}_morganbased"
         morgan_path = self.path.parent/morgan_filename
@@ -634,180 +718,90 @@ class DataEng:
         return final_df
 
     
-    def scaffold_based_split(self) -> pd.DataFrame:
-        
-        df = self.column_addition()
-        groups = df.groupby("Scaffold_InChI", dropna=False).groups
-        
-        #so here the entire index is preserved for ordering and re-ordering. 
-        sorted_keys = sorted(groups.keys(), key = lambda k : len(groups[k]), reverse = True) #ascending or descenfing comes fromthe lamda here actually and we reverse fo rbg uckets to be on the top
-        
-        target_train_size = int(0.8 * len(df))
+    @staticmethod
+    def _split_frame(frame: pd.DataFrame):
+        frame = frame.copy()
+        frame["Scaffold_InChI"] = frame["Scaffold_InChI"].astype("object").where(
+            frame["Scaffold_InChI"].notna(),
+            "__NO_SCAFFOLD__",
+        )
+        groups = frame.groupby("Scaffold_InChI").groups
+        sorted_keys = sorted(
+            groups.keys(),
+            key=lambda key: len(groups[key]),
+            reverse=True,
+        )
+
+        target_train_size = int(0.8 * len(frame))
         train_indices = []
         test_indices = []
-        
+
         for scaffold in sorted_keys:
-            
-            row_numbers = groups[scaffold] #handling irregular sizing here
-            
+            row_indices = groups[scaffold]
             if len(train_indices) < target_train_size:
-                train_indices.extend(row_numbers)
-            
+                train_indices.extend(row_indices)
             else:
-                test_indices.extend(row_numbers)
-        
-        
-        X_matrix = df.drop(columns=["PIC50"]).copy()
-        y_vector = df["PIC50"].copy()
-        
-        X_train = X_matrix.loc[train_indices]
-        y_train = y_vector[train_indices]
-        X_test = X_matrix.loc[test_indices]
-        y_test = y_vector[test_indices]
-        
-        return X_train, y_train, X_test, y_test
+                test_indices.extend(row_indices)
+
+        X_matrix = frame.drop(columns=["PIC50"])
+        y_vector = frame["PIC50"]
+        return (
+            X_matrix.loc[train_indices],
+            y_vector.loc[train_indices],
+            X_matrix.loc[test_indices],
+            y_vector.loc[test_indices],
+        )
+
+    def scaffold_based_split(self) -> pd.DataFrame:
+        morgan_df, _ = self.molecular_desc()
+        return self._split_frame(morgan_df)
     
     def scaffoldX_CrossValidation(self):
-        
-        X_train, _, _, _ = DataEng.scaffold_based_split()
-        
-        df = X_train
-        groups = df.groupby("Scaffold_InChI", dropna = False).groups
-        
-        sorted_keys = sorted(groups.keys(), key = lambda k: len(groups[k]), reverse=True)
-        
-        sorted = []
-        for scaffold in sorted_keys:
-            row_numbers = groups[scaffold]
-            sorted.extend(row_numbers)
-        
-        df = pd.DataFrame(sorted)
-        
-        return df 
+        X_train, _, _, _ = self.scaffold_based_split()
+        return X_train["Scaffold_InChI"]
 
     
     def molecular_desc(self):
-        df1 = self.finaldrop()
-        df2 = self.column_addition()
-        remover = SaltRemover()
+        df1 = self.finaldrop().copy()
 
-        bio_descriptors = {
-            'MolWt': Descriptors.MolWt,
-            'MolLogP': Descriptors.MolLogP,
-            'NumHDonors': Lipinski.NumHDonors,
-            'NumHAcceptors': Lipinski.NumHAcceptors,
-            'TPSA': Descriptors.TPSA,
-            'MaxPartialCharge': Descriptors.MaxPartialCharge,
-            'MinPartialCharge': Descriptors.MinPartialCharge,
-            'NumHeteroatoms': Lipinski.NumHeteroatoms,
-            'NumRotatableBonds': Lipinski.NumRotatableBonds,
-            'FractionCSP3': Lipinski.FractionCSP3,
-            'NumAromaticRings': Lipinski.NumAromaticRings,
-            'RingCount': Lipinski.RingCount,
-            'NumAliphaticNitrogens': Lipinski.NumAliphaticNitrogens,
-            'NumFormalCharge': Chem.GetFormalCharge,
-        }
-
-        def single_smiles(smiles):
-            if not isinstance(smiles, str) or not smiles.strip():
-                return {key: None for key in bio_descriptors}
-
-            raw_mol = Chem.MolFromSmiles(smiles)
-            if raw_mol is None:
-                return {key: None for key in bio_descriptors}
-
-            mol = remover.StripMol(raw_mol)
-
-            try:
-                Chem.rdPartialCharges.ComputeGasteigerCharges(mol)
-                features = {}
-                for name, func in bio_descriptors.items():
-                    val = func(mol)
-                    if val != val or val == float('inf') or val == float('-inf'):
-                        features[name] = None
-                    else:
-                        features[name] = val
-                return features
-            except Exception:
-                return {key: None for key in bio_descriptors}
-
-        smiles_list = df1['cleaned_smiles'].tolist()
-        print(mp.cpu_count())
+        smiles_list = df1["cleaned_smiles"].tolist()
 
         with mp.Pool(processes=max(1, mp.cpu_count())) as pool:
-            results = pool.map(single_smiles, smiles_list)
+            results = pool.map(calculate_molecular_descriptors, smiles_list)
 
-        features_df = pd.DataFrame(results)
-        final_df = pd.concat([df1.reset_index(drop=True), features_df.reset_index(drop=True)], axis=1)
-        combined_df = pd.concat([df2.reset_index(drop=True), features_df.reset_index(drop=True)], axis=1)
+        descriptor_df = pd.DataFrame(results, index=df1.index)
+        fingerprint_df = pd.DataFrame(
+            np.vstack(df1["cleaned_smiles"].apply(self.morgan_fingerprinting_s_method)),
+            index=df1.index,
+            columns=[f"morgan_{number}" for number in range(1024)],
+        )
+        scaffold_df = pd.DataFrame(index=df1.index)
+        scaffold_df["scaffold"] = df1["cleaned_smiles"].apply(self.mscl)
+        scaffold_df["Scaffold_InChI"] = scaffold_df["scaffold"].apply(
+            DataCleaning.InChIKeyConversion
+        )
 
-        return final_df, combined_df
+        morgan_df = pd.concat([df1, fingerprint_df, scaffold_df], axis=1)
+        combined_df = pd.concat([df1, fingerprint_df, descriptor_df, scaffold_df], axis=1)
+
+        return morgan_df, combined_df
     
     def scaffold_RDKit(self):
-        
-        df, _ = self.molecular_desc()
-        groups = df.groupby("Scaffold_InChI", dropna=False).groups
-        
-        sorted_keys = sorted(groups.keys(), key = lambda k: len(groups[k]), reverse=True) #sort those key and their data
-
-        target_train_size = int(0.8 * len(df))
-        train_indices = []
-        test_indices = []
-        
-        for scaffold in sorted_keys:
-            
-            row_number = groups[scaffold]
-            
-            if len(train_indices) < target_train_size: 
-                train_indices.extend(row_number)
-            else:
-                test_indices.extend(row_number)
-                
-        X_matrix = df.drop(columns = ["PIC50"]).copy()
-        y_vector = df["PIC50"].copy()
-        
-        X_train = X_matrix.loc[train_indices]
-        y_train = y_vector.loc[train_indices]
-        X_test = X_matrix.loc[test_indices]
-        y_test = y_vector.loc[test_indices]
-        
-        return(
-            pd.DataFrame(X_train), 
-            pd.DataFrame(y_train), 
-            pd.DataFrame(X_test), 
-            pd.DataFrame(y_test)       
-        ) 
+        _, combined_df = self.molecular_desc()
+        descriptor_columns = [
+            "MolWt", "MolLogP", "NumHDonors", "NumHAcceptors", "TPSA",
+            "MaxPartialCharge", "MinPartialCharge", "NumHeteroatoms",
+            "NumRotatableBonds", "FractionCSP3", "NumAromaticRings",
+            "RingCount", "NumAliphaticNitrogens", "NumFormalCharge",
+        ]
+        descriptor_df = combined_df[
+            ["PIC50", "Scaffold_InChI"] + descriptor_columns
+        ]
+        return self._split_frame(descriptor_df)
     
     def scaffold_combined(self):
-        
-        _, df  = self.molecular_desc()
-        
-        groups  = df.groupby("Scaffold_InChI", dropna=False).groups
-        sorted_keys = sorted(groups.keys(), lambda k: len(groups[k]), reverse = True )
-        
-        length = (0.8 * len(df))
-        train_indices = []
-        test_indices = []
-        
-        for scaffold in sorted_keys:
-            
-            row_numbers = groups[scaffold] #comes as indexes
-            
-            if (len(row_numbers) < length):
-                train_indices.extend(row_numbers)
-            
-            else:
-                test_indices.extend(row_numbers)
-        
-        X_matrix = df.drop(columns=["PIC50"]).copy()
-        y_vector = df["PIC50"].copy()
-        
-        X_train = X_matrix.loc[train_indices]
-        y_train = y_vector.loc[train_indices]
-        X_test = X_matrix.loc[test_indices]
-        y_test = y_vector.loc[test_indices]
-        
-        return X_train, y_train, X_test, y_test
+        _, combined_df = self.molecular_desc()
+        return self._split_frame(combined_df)
         
         
 class Model:
@@ -816,253 +810,460 @@ class Model:
         
         self.de = DataEng(path=path)
         self.df_morgan, self.df_rdkit = self.de.molecular_desc()
+        self.output_path = Path(OUTPUT_DIR)
+        self.figure_path = self.output_path / "figures"
+        self.log_path = self.output_path / "logs"
+        self.model_path = self.output_path / "models"
+        for directory in [self.figure_path, self.log_path, self.model_path]:
+            directory.mkdir(parents=True, exist_ok=True)
         
-    def objective(self, trial, X_train, y_train, scaffolds_train):
+    def _model_from_trial(self, trial, model_type):
+        if model_type == "RandomForest":
+            bootstrap = trial.suggest_categorical('bootstrap', [True, False])
+            params = {
+                'n_estimators' : trial.suggest_int('n_estimators', 100, 1000), # 2000 is excessively slow for CV
+                'max_depth' : trial.suggest_int('max_depth', 20, 50),
+                'min_samples_split' : trial.suggest_int('min_samples_split', 2, 20), 
+                'min_samples_leaf' : trial.suggest_int('min_samples_leaf', 1, 10),
+                'max_features' : trial.suggest_categorical('max_features', ['sqrt', 'log2', None]), # None replaces 1.0 safely
+                'bootstrap' : bootstrap,
+                'criterion' : 'squared_error',
+                'ccp_alpha' : trial.suggest_float('ccp_alpha', 1e-8, 1e-2, log=True), 
+                'n_jobs' : 1, 
+                'random_state' : 50
+            }
+            model = RandomForestRegressor(**params)
         
-        bootstrap = trial.suggest_categorical('bootstrap', [True, False])
-        params = {
-            'n_estimators' : trial.suggest_int('n_estimators', 200, 2000),
-            'max_depth' : trial.suggest_int('max_depth', 20, 50),
-            'min_samples_split' : trial.suggest_int('min_samples_split', 2, 20), 
-            'min_samples_leaf' : trial.suggest_int('min_samples_leaf', 1, 10),
-            'max_features' : trial.suggest_categorical('max_features', [1.0, 0.5, 'sqrt', 'log2']),
-            'bootstrap' : bootstrap,
-            'criterion' : 'absolute_error', 
-            'ccp_alpha' : trial.suggest_float('ccp_alpha', 1e-15, 1e-3, log=True),
-            'n_jobs' : -1,
-            'random_state' : 50
-        }
+        if model_type == "XGBoost":
+            params = {
+                "n_estimators": trial.suggest_int("xgb_n_estimators", 100, 1500),
+                "max_depth": trial.suggest_int("xgb_max_depth", 3, 12), 
+                "learning_rate": trial.suggest_float("xgb_lr", 0.01, 0.2, log=True),
+                "subsample": trial.suggest_float("xgb_subsample", 0.5, 1.0),
+                "colsample_bytree": trial.suggest_float("xgb_colsample", 0.5, 1.0),
+                "reg_alpha": trial.suggest_float("xgb_alpha", 1e-8, 10.0, log=True),  
+                "reg_lambda": trial.suggest_float("xgb_lambda", 1e-8, 10.0, log=True), 
+                "n_jobs": 1,
+                "random_state": 50,
+            }
+            model = xgb.XGBRegressor(**params)
         
-        if bootstrap:
-            params['max_samples'] = trial.suggest_float('max_samples', 0.6, 1.0)
+        if model_type == "LightGBM":
+            params = {
+                "n_estimators": trial.suggest_int("lgb_n_estimators", 100, 1500),
+                "max_depth": trial.suggest_int("lgb_max_depth", 3, 12),
+                "num_leaves": trial.suggest_int("lgb_num_leaves", 15, 255),  
+                "learning_rate": trial.suggest_float("lgb_lr", 0.01, 0.2, log=True),
+                "subsample": trial.suggest_float("lgb_subsample", 0.5, 1.0),
+                "colsample_bytree": trial.suggest_float("lgb_colsample", 0.5, 1.0),
+                "reg_alpha": trial.suggest_float("lgb_alpha", 1e-8, 10.0, log=True),
+                "reg_lambda": trial.suggest_float("lgb_lambda", 1e-8, 10.0, log=True),
+                "n_jobs": 1,
+                "random_state": 50,
+                "verbose": -1,  
+            }
+            model = lgb.LGBMRegressor(**params)
         
-        model = RandomForestRegressor(**params)
-        
-        cv = GroupKFold(n_splits =  5)
+        return model
+
+    def objective(self, trial, X_train, y_train, scaffolds_train, model_type):
+        model = self._model_from_trial(trial, model_type)
+        cv = GroupKFold(n_splits=5)
         score = cross_val_score(
             model, 
             X_train,
             y_train,
-            groups = scaffolds_train,
-            cv = cv,
+            groups=scaffolds_train,
+            cv=cv,
             scoring="neg_mean_absolute_error",
             n_jobs=-1
         )
         
-        return score.mean() #maximizing because of negative MAE?
+        return score.mean()
+
+    def _prepare_data(self, variant):
+        if variant == "morgan":
+            return self.de.scaffold_based_split()
+        if variant == "descriptors":
+            return self.de.scaffold_RDKit()
+        if variant == "combined":
+            return self.de.scaffold_combined()
+        raise ValueError(f"Unknown feature variant: {variant}")
+
+    @staticmethod
+    def _model_columns(frame, variant):
+        descriptor_columns = {
+            "MolWt", "MolLogP", "NumHDonors", "NumHAcceptors", "TPSA",
+            "MaxPartialCharge", "MinPartialCharge", "NumHeteroatoms",
+            "NumRotatableBonds", "FractionCSP3", "NumAromaticRings",
+            "RingCount", "NumAliphaticNitrogens", "NumFormalCharge",
+        }
+        if variant == "morgan":
+            return [column for column in frame if column.startswith("morgan_")]
+        if variant == "descriptors":
+            return [column for column in frame if column in descriptor_columns]
+        return [
+            column for column in frame
+            if column.startswith("morgan_") or column in descriptor_columns
+        ]
+
+    def _optimize_and_evaluate(self, model_type, variant, study_name, file_name, n_trials=100):
+        X_train, y_train, X_test, y_test = self._prepare_data(variant)
+        model_columns = self._model_columns(X_train, variant)
+        X_train_model = X_train[model_columns]
+        X_test_model = X_test[model_columns]
+        scaffold_values = X_train["Scaffold_InChI"]
+
+        study = optuna.create_study(
+            direction="maximize",
+            sampler=optuna.samplers.TPESampler(seed=50),
+            study_name=study_name,
+        )
+        study.optimize(
+            lambda trial: self.objective(
+                trial,
+                X_train_model,
+                y_train,
+                scaffold_values,
+                model_type,
+            ),
+            n_trials=n_trials,
+            show_progress_bar=True,
+        )
+
+        final_model = self._model_from_trial(
+            optuna.trial.FixedTrial(study.best_params),
+            model_type,
+        )
+        final_model.fit(X_train_model, y_train)
+        y_pred = final_model.predict(X_test_model)
+        model_name = f"{model_type}_{variant}"
+        metrics = self._save_run_outputs(
+            model_name,
+            variant,
+            model_type,
+            final_model,
+            study,
+            X_train,
+            y_train,
+            X_test,
+            y_test,
+            y_pred,
+            file_name,
+        )
+        self.last_metrics = metrics
+        print(f"{model_name} test MAE: {metrics['test_mae']:.4f}")
+        return final_model, study, metrics["test_mae"]
+
+    def _save_run_outputs(
+        self,
+        model_name,
+        variant,
+        model_type,
+        model,
+        study,
+        X_train,
+        y_train,
+        X_test,
+        y_test,
+        y_pred,
+        file_name,
+    ):
+        residuals = y_test - y_pred
+        pearson_value, pearson_p = pearsonr(y_test, y_pred)
+        spearman_value, spearman_p = spearmanr(y_test, y_pred)
+        metrics = {
+            "model": model_type,
+            "features": variant,
+            "test_mae": mean_absolute_error(y_test, y_pred),
+            "test_rmse": np.sqrt(mean_squared_error(y_test, y_pred)),
+            "test_r2": r2_score(y_test, y_pred),
+            "pearson_r": pearson_value,
+            "pearson_p": pearson_p,
+            "spearman_r": spearman_value,
+            "spearman_p": spearman_p,
+            "cv_neg_mae": study.best_value,
+            "n_train": len(X_train),
+            "n_test": len(X_test),
+            "n_features": X_train.shape[1],
+        }
+
+        pd.DataFrame([metrics]).to_csv(
+            self.log_path / f"{model_name}_metrics.csv", index=False
+        )
+        pd.DataFrame({
+            "index": y_test.index,
+            "actual": y_test.values,
+            "predicted": y_pred,
+            "residual": residuals.values,
+        }).to_csv(self.log_path / f"{model_name}_predictions.csv", index=False)
+        pd.DataFrame(study.trials_dataframe()).to_csv(
+            self.log_path / f"{model_name}_optuna_trials.csv", index=False
+        )
+        X_train.to_csv(self.log_path / f"{model_name}_train.csv", index=True)
+        X_test.to_csv(self.log_path / f"{model_name}_test.csv", index=True)
+        joblib.dump(model, self.model_path / file_name)
+
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+        sns.scatterplot(x=y_test, y=y_pred, ax=axes[0])
+        axes[0].set_title(f"{model_name}: predictions")
+        axes[0].set_xlabel("Actual pIC50")
+        axes[0].set_ylabel("Predicted pIC50")
+        sns.histplot(residuals, kde=True, ax=axes[1])
+        axes[1].set_title(f"{model_name}: residuals")
+        axes[1].set_xlabel("Actual - predicted")
+        fig.tight_layout()
+        fig.savefig(self.figure_path / f"{model_name}_diagnostics.png", dpi=200)
+        plt.close(fig)
+
+        return metrics
+
 
 
     def RFmodela(self):
-        
-        """
-        Random Forest using Morgan fingerprints only.
-        """
-        
-        #we will try optuna - using Tree-structured Parzen Estimator (TPE) - Bayesian optimization method
-        
-        X_train, y_train, X_test, y_test = self.de.scaffold_based_split()
-        
-        scaffolds_train = X_train["Scaffold_InChI"].values 
-        cols_to_drop = ["Scaffold_InChI", "cleaned_smiles", "InChIkey", "scaffold"]
-        
-        X_train_model = X_train.drop(columns=[c for c in cols_to_drop if c in X_train.columns])
-        X_test_model  = X_test.drop(columns=[c for c in cols_to_drop if c in X_test.columns])
-        
-        study = optuna.create_study(
-            direction = "maximize", 
-            sampler = optuna.samplers.TPESampler(seed=50),
-            study_name = 'RF_Scaffold_Split'
+        return self._optimize_and_evaluate(
+            "RandomForest", "morgan", "RF_Scaffold_Split", "RFModelA-MORGAN-ONLY.joblib"
         )
-        
-        study.optimize(
-            lambda trial : self.objective(trial, X_train_model, y_train, scaffolds_train),
-            n_trials = 100,
-            show_progress_bar = True
-        )
-        
-        
-    
-        print(f"Best MAE CV:", -study.best_value)
-        print("Best params:")
-        
-        for k, v in study.best_params.items():
-            print(f"  {k}: {v}")
-
-        best_params = study.best_params.copy()
-        best_params.update({
-            'criterion': 'absolute_error',
-            'n_jobs': -1,
-            'random_state': 50
-        })
-
-        final_model = RandomForestRegressor(**best_params)
-        final_model.fit(X_train_model,  y_train)
-        
-        y_pred = final_model.predict(X_test_model)
-        test_mae = mean_absolute_error(y_test, y_pred)
-        print(f"\nTest MAE: {test_mae:.4f}")
-
-        return final_model, study
     
     
     def RFmodelb(self):
-        
-        """
-        Random Forest using RDKit molecular descriptors only. 
-        """
-        
-        X_train, y_train, X_test, y_test  = self.de.scaffold_RDKit()
-        scaffold_values = X_train["Scaffold_InChI"].values
-        columns_to_drop = ["action_type", "target_pref_name", "target_tax_id", "bao_endpoint", 
-                           "assay_chembl_id", "target_chembl_id", "record_id", "molecule_chembl_id", 
-                           "parent_molecule_chembl_id", "bao_label", "standard_type", "standard_units", "standard_flag", "Scaffold_InChI"]
-        
-        X_train_model = X_train.drop(columns = [c for c in columns_to_drop])
-        X_test_model = X_test.drop(columns = [c for c in columns_to_drop])
-        
-        study = optuna.create_study(
-            direction = "maximize",
-            sampler = optuna.sampler.TPESampler(seed=50), 
-            study_name = "RF_RDKit_scaffold"
+        return self._optimize_and_evaluate(
+            "RandomForest", "descriptors", "RF_RDKit_Scaffold", "RFModelB-DESCRIPTORS-ONLY.joblib"
         )
-        
-        study.optimize(
-            lambda trial : self.objective(trial, X_train_model, y_train, scaffold_values), 
-            n_trials = 100, 
-            show_progress_bar = True
-        )
-        
-        for k, v in study.best_params.items():
-            print(f"{k}: {v}")
-        
-        best_params = study.best_params.copy()
-        best_params.update({
-            'criterion' : 'absolute_error', 
-            'n_jobs' : -1,
-            'random_state': 50
-        })
-        
-        final_model = RandomForestRegressor(**best_params)
-        final_model.fit(X_train_model, y_train)
-        
-        y_pred = final_model.predict(X_test_model)
-        test_mae = mean_absolute_error(y_test, y_pred)
-        print(f"Test MAE : {test_mae}")
-        
-        return final_model, study       
+
 
     def RFmodelc(self):
-        
-        """
-        Random Forest using Morgan fingerprints + RDKit descriptors.
-        """
-        
-        X_train, y_train, X_test, y_test = self.de.scaffold_combined()
-        scaffold_train = X_train["scaffold_InChI"].values #we can use key for sampling but how are values getting used here ?
-        columns_to_drop = ["action_type", "target_pref_name", "target_tax_id", "bao_endpoint", 
-                           "assay_chembl_id", "target_chembl_id", "record_id", "molecule_chembl_id", 
-                           "parent_molecule_chembl_id", "bao_label", "standard_type", "standard_units", "standard_flag", "Scaffold_InChI"]
-        
-        X_train_model = X_train.drop(columns=[c for c in columns_to_drop])
-        X_test_model = X_test.drop(columns = [c for c in columns_to_drop])
-        
-        study = optuna.create_study(
-            direction = "maximize", 
-            sampler = optuna.sampler.TPESampler(seed=50), 
-            study_name = "RF_RDKitMorgan_Split"
+        return self._optimize_and_evaluate(
+            "RandomForest", "combined", "RF_RDKitMorgan_Split", "RFModelC-COMBINED.joblib"
         )
-        
-        study.optimize(
-            lambda trial : self.objective(trial, X_train_model, X_test_model, scaffold_train),
-            n_trials = 100, 
-            show_progress_bar = True
+    
+    def XGBoostModelA(self):
+        return self._optimize_and_evaluate(
+            "XGBoost", "morgan", "XGB_Scaffold_Split", "XGBoostModelA-MORGAN-ONLY.joblib"
         )
-        
-        for k, v in study.best_params.items():
-            print(f"{k} : {v}")
-        
-        best_params  = study.best_params.copy()
-        best_params.update({
-            'criterion' : 'absolute_error', 
-            'n_jobs' : -1,
-            'random_state': 50
-        })
-        
-        final_model = RandomForestRegressor(**best_params)
-        final_model.fit(X_train_model, y_train) 
-        test_mae = mean_absolute_error(y_test, y_pred)
-        print(f"MAE scored {MAE}")
-        
-        return final_model, study
+    
+    def XGBoostModelB(self):
+        return self._optimize_and_evaluate(
+            "XGBoost", "descriptors", "XGB_RDKit_Scaffold", "XGBoostModelB-DESCRIPTORS-ONLY.joblib"
+        )
+
+    def XGBooostModelB(self):
+        return self.XGBoostModelB()
+    
+    def XGBoostModelC(self):
+        return self._optimize_and_evaluate(
+            "XGBoost", "combined", "XGB_RDKitMorgan_Split", "XGBoostModelC-COMBINED.joblib"
+        )
+    
+    def LGBMModelA(self):
+        return self._optimize_and_evaluate(
+            "LightGBM", "morgan", "LGBM_Scaffold_Split", "LGBMModelA-MORGAN-ONLY.joblib"
+        )
+    
+    def LGBMModelB(self):
+        return self._optimize_and_evaluate(
+            "LightGBM", "descriptors", "LGBM_RDKit_Scaffold", "LGBMModelB-DESCRIPTORS-ONLY.joblib"
+        )
+    
+    def LGBMModelC(self):
+        return self._optimize_and_evaluate(
+            "LightGBM", "combined", "LGBM_RDKitMorgan_Split", "LGBMModelC-COMBINED.joblib"
+        )
+
+    def compare_models(self, n_trials=20):
+        results = []
+        configurations = [
+            ("RandomForest", "morgan", "RFModelA-MORGAN-ONLY.joblib"),
+            ("RandomForest", "descriptors", "RFModelB-DESCRIPTORS-ONLY.joblib"),
+            ("RandomForest", "combined", "RFModelC-COMBINED.joblib"),
+            ("XGBoost", "morgan", "XGBoostModelA-MORGAN-ONLY.joblib"),
+            ("XGBoost", "descriptors", "XGBoostModelB-DESCRIPTORS-ONLY.joblib"),
+            ("XGBoost", "combined", "XGBoostModelC-COMBINED.joblib"),
+            ("LightGBM", "morgan", "LGBMModelA-MORGAN-ONLY.joblib"),
+            ("LightGBM", "descriptors", "LGBMModelB-DESCRIPTORS-ONLY.joblib"),
+            ("LightGBM", "combined", "LGBMModelC-COMBINED.joblib"),
+        ]
+        for model_type, variant, file_name in configurations:
+            _, study, test_mae = self._optimize_and_evaluate(
+                model_type,
+                variant,
+                f"{model_type}_{variant}_comparison",
+                file_name,
+                n_trials=n_trials,
+            )
+            results.append({
+                "model": model_type,
+                "features": variant,
+                "cv_neg_mae": study.best_value,
+                "test_mae": test_mae,
+                "test_rmse": self.last_metrics["test_rmse"],
+                "test_r2": self.last_metrics["test_r2"],
+                "pearson_r": self.last_metrics["pearson_r"],
+                "spearman_r": self.last_metrics["spearman_r"],
+            })
+        comparison = pd.DataFrame(results).sort_values("test_mae").reset_index(drop=True)
+        comparison.to_csv(self.log_path / "model_comparison_metrics.csv", index=False)
+
+        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+        sns.barplot(data=comparison, x="test_mae", y="model", hue="features", ax=axes[0])
+        axes[0].set_title("Model comparison by test MAE")
+        axes[0].set_xlabel("Test MAE")
+        axes[0].set_ylabel("")
+        sns.barplot(data=comparison, x="test_r2", y="model", hue="features", ax=axes[1])
+        axes[1].set_title("Model comparison by test R2")
+        axes[1].set_xlabel("Test R2")
+        axes[1].set_ylabel("")
+        fig.tight_layout()
+        fig.savefig(self.figure_path / "model_comparison_metrics.png", dpi=200)
+        plt.close(fig)
+        self._save_statistical_visualizations(comparison)
+
+        return comparison
+
+    def _save_statistical_visualizations(self, comparison):
+        prediction_frames = []
+        for _, row in comparison.iterrows():
+            prediction_path = self.log_path / (
+                f"{row['model']}_{row['features']}_predictions.csv"
+            )
+            if prediction_path.exists():
+                predictions = pd.read_csv(prediction_path)
+                predictions["model"] = f"{row['model']}-{row['features']}"
+                prediction_frames.append(predictions)
+
+        if not prediction_frames:
+            return
+
+        prediction_table = pd.concat(prediction_frames, ignore_index=True)
+        prediction_table.to_csv(
+            self.log_path / "all_model_predictions.csv", index=False
+        )
+
+        fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+        sns.boxplot(data=prediction_table, x="model", y="residual", ax=axes[0])
+        axes[0].tick_params(axis="x", rotation=75)
+        axes[0].set_title("Residual distributions")
+        axes[0].set_xlabel("")
+        axes[0].set_ylabel("Actual - predicted")
+
+        correlation_table = prediction_table.pivot_table(
+            index="index", columns="model", values="predicted"
+        )
+        sns.heatmap(correlation_table.corr(), annot=True, cmap="vlag", center=0, ax=axes[1])
+        axes[1].set_title("Prediction correlation")
+        fig.tight_layout()
+        fig.savefig(self.figure_path / "statistical_model_diagnostics.png", dpi=200)
+        plt.close(fig)
+
+    def output_locations(self):
+        return {
+            "models": self.model_path,
+            "figures": self.figure_path,
+            "logs": self.log_path,
+        }
 
 
 class Validation:
 
-    def __init__(self):
-        pass
+    def __init__(self, path: Path):
+        self.data = DataEng(path)
 
     def random_split(self):
-        pass
+        from sklearn.model_selection import train_test_split
+        frame, _ = self.data.molecular_desc()
+        X = frame.drop(columns=["PIC50"])
+        y = frame["PIC50"]
+        return train_test_split(X, y, test_size=0.2, random_state=50)
 
     def group_split(self):
-        pass
+        return self.data.scaffold_based_split()
 
     def external_validation(self):
-        pass
+        raise NotImplementedError("Provide an external validation dataset.")
 
 
 class AblationStudies:
 
-    def __init__(self):
-        pass
+    def __init__(self, path: Path):
+        self.model = Model(path)
+
+    def full_model(self, n_trials=20):
+        return self.model._optimize_and_evaluate(
+            "RandomForest", "combined", "Ablation_Full_Model", "ablation-full-model.joblib", n_trials
+        )
+
+    def fingerprint_only(self, n_trials=20):
+        return self.model._optimize_and_evaluate(
+            "RandomForest", "morgan", "Ablation_Fingerprint_Only", "ablation-fingerprint-only.joblib", n_trials
+        )
+
+    def descriptors_only(self, n_trials=20):
+        return self.model._optimize_and_evaluate(
+            "RandomForest", "descriptors", "Ablation_Descriptors_Only", "ablation-descriptors-only.joblib", n_trials
+        )
 
     def assay_context(self):
-        pass
+        raise NotImplementedError("Assay context features are not defined in the current dataset.")
 
     def bao_context(self):
-        pass
-    
-class Explainability:
-    
-    def __init__(self):
-        pass
-    
-class Representation:
-    
-    def __init__(self):
-        pass
-    
-class modelserving:
-    
-    def __init__(self):
-        pass
-    
+        raise NotImplementedError("BAO context features are not defined in the current dataset.")
 
 
-if __name__ == "__main__":
-    
-    ROOT_FOLDER = Path(__file__).resolve().parent.parent if "__file__" in globals() else Path.cwd()
-
-    target_input = input("Enter the target name (e.g., acetylcholinesterase): ").strip()
+def run_pipeline(root_folder, target_input, target_index, n_trials=20, compare=True):
     target_results = data_retrieval_desc(target_name=target_input)
-
-    target_idx = int(input("\nEnter the index of the target you want to select: "))
-    selected_meta = select_target(target_idx, target_results)
-
+    selected_meta = select_target(target_index, target_results)
     engine = DuckDBEngine(
         connection=duckdb.connect(),
         targeted=selected_meta,
-        root_folder=ROOT_FOLDER
+        root_folder=root_folder,
     )
-    csv_path, tbl_name = engine.create_and_load_csv()
-    engine.create_database(csv_filepath=csv_path, table_name=tbl_name)
+    csv_path, table_name = engine.create_and_load_csv()
+    engine.create_database(csv_filepath=csv_path, table_name=table_name)
+    print(engine.query_check(table_name=table_name))
 
-    preview_df = engine.query_check(table_name=tbl_name)
-    print(preview_df)
-    
-    dc = DataCleaning(path=csv_path)
-    clean_path_output = dc.relationalvalue()
-    print(f"Final cleaned dataset: {clean_path_output}")
-    de = DataEng(path = clean_path_output)
-    
+    clean_path = DataCleaning(path=csv_path).relationalvalue()
+    data_engine = DataEng(path=clean_path)
+    model_runner = Model(path=clean_path)
+
+    if compare:
+        comparison = model_runner.compare_models(n_trials=n_trials)
+    else:
+        model_runner.RFmodelc()
+        comparison = None
+
+    print(f"Generated database CSV: {csv_path}")
+    print(f"Generated cleaned CSV: {clean_path}")
+    for name, path in model_runner.output_locations().items():
+        print(f"{name}: {path}")
+    return {
+        "engine": engine,
+        "data_engine": data_engine,
+        "model_runner": model_runner,
+        "comparison": comparison,
+        "clean_path": clean_path,
+    }
+
+
+def main():
+    root_folder = Path(__file__).resolve().parent.parent if "__file__" in globals() else Path.cwd()
+    target_input = input("Enter the target name (e.g., acetylcholinesterase): ").strip()
+    target_results = data_retrieval_desc(target_name=target_input)
+    print(target_results.head(10))
+    target_index = int(input("\nEnter the index of the target you want to select: "))
+    trial_text = input("Optuna trials per model [20]: ").strip()
+    n_trials = int(trial_text) if trial_text else 20
+    compare_text = input("Run all model comparisons? [Y/n]: ").strip().lower()
+    compare = compare_text not in {"n", "no"}
+    return run_pipeline(
+        root_folder=root_folder,
+        target_input=target_input,
+        target_index=target_index,
+        n_trials=n_trials,
+        compare=compare,
+    )
+
+
+if __name__ == "__main__":
+    main()
+
     
