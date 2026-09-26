@@ -15,7 +15,6 @@
 
 ### Structure-aware prediction of acetylcholinesterase inhibitory potency
 
-**ChEMBL → Molecular Representation → Scaffold-Aware Validation → Classical ML → GNN → PiGNN**
 
 <br>
 
