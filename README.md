@@ -11,7 +11,7 @@
 
 <div align="center">
 
-# 🧬 AChE Molecular Machine Learning
+## 🧬 AChE Molecular Machine Learning
 
 ### Structure-aware prediction of acetylcholinesterase inhibitory potency
 
@@ -587,8 +587,3 @@ a.k.a
 
 ---
 
-<div align="center">
-
-### 🧬 Molecular Structure → Representation → Learning → Generalization
-
-</div>
