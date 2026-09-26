@@ -2,7 +2,7 @@
 __pycache__/
 *.py[codz]
 *$py.class
-CDDgem.py
+**/CDDgem.py
 
 # C extensions
 *.so
@@ -221,3 +221,4 @@ src/fileoperations.py
 src/maintenancecopy.py
 Notes-Excalidraw/Untitled.md
 src/CDDgem.py
+/media/notshadow/d5dd988b-c393-4302-aa45-32bcfc8463c2/WorkFolder/DrugDiscovery-BioInformatics/src/CDDgem.py
