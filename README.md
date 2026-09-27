@@ -27,7 +27,7 @@
 
 <br><br>
 
-<img src="assets/archbanner.png" width="900"/>
+
 
 </div>
 
