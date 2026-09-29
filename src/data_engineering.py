@@ -1,6 +1,6 @@
 from pathlib import Path 
 from rdkit import Chem
-from rdkit.Chem import MurckoScaffold
+from rdkit.Chem.Scaffolds import MurckoScaffold
 from rdkit.Chem import rdFingerprintGenerator
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.ensemble import RandomForestRegressor

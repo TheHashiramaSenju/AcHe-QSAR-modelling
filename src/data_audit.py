@@ -1087,9 +1087,9 @@ class DataAudit:
 
     def _print_summary(self, summary):
         findings = pd.Series([entry["severity"] for entry in self.findings]).value_counts()
-        print("\n" + "=" * 50)
+        
         print("AChE DATA AUDIT COMPLETE")
-        print("=" * 50)
+        
         print(f"Rows:\n    Raw:        {summary['dataset']['raw_records']}\n    Final:      {summary['dataset']['final_records_current_behavior']}")
         print(f"\nUnique molecules:\n    {summary['dataset']['final_unique_InChIKeys']}")
         target = summary["target"]

@@ -1,5 +1,5 @@
 
-import data_engineering as DataEng 
+import data_engineering as data_engineering_module
 from pathlib import Path
 import pandas as pd
 from sklearn.model_selection import GroupKFold
@@ -17,6 +17,10 @@ import numpy as np
 from sklearn.metrics import mean_absolute_error
 
 
+def _resolve_project_root() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
 
 OUTPUT_DIR = "/media/notshadow/d5dd988b-c393-4302-aa45-32bcfc8463c2/WorkFolder/DrugDiscovery-BioInformatics/output"
 
@@ -25,7 +29,7 @@ class Model:
 
     def __init__(self, path: Path):
         
-        self.de = DataEng(path=path)
+        self.de = data_engineering_module.DataEng(path=path)
         self.df_morgan, self.df_rdkit = self.de.molecular_desc()
         self.output_path = Path(OUTPUT_DIR)
         self.figure_path = self.output_path / "figures"
@@ -46,7 +50,7 @@ class Model:
                 'bootstrap' : bootstrap,
                 'criterion' : 'squared_error',
                 'ccp_alpha' : trial.suggest_float('ccp_alpha', 1e-8, 1e-2, log=True), 
-                'n_jobs' : 1, 
+                'n_jobs' : -1, 
                 'random_state' : 50
             }
             model = RandomForestRegressor(**params)
@@ -60,7 +64,7 @@ class Model:
                 "colsample_bytree": trial.suggest_float("xgb_colsample", 0.5, 1.0),
                 "reg_alpha": trial.suggest_float("xgb_alpha", 1e-8, 10.0, log=True),  
                 "reg_lambda": trial.suggest_float("xgb_lambda", 1e-8, 10.0, log=True), 
-                "n_jobs": 1,
+                "n_jobs": -1,
                 "random_state": 50,
             }
             model = xgb.XGBRegressor(**params)
@@ -75,7 +79,7 @@ class Model:
                 "colsample_bytree": trial.suggest_float("lgb_colsample", 0.5, 1.0),
                 "reg_alpha": trial.suggest_float("lgb_alpha", 1e-8, 10.0, log=True),
                 "reg_lambda": trial.suggest_float("lgb_lambda", 1e-8, 10.0, log=True),
-                "n_jobs": 1,
+                "n_jobs": -1,
                 "random_state": 50,
                 "verbose": -1,  
             }
@@ -378,3 +382,15 @@ class Model:
             "figures": self.figure_path,
             "logs": self.log_path,
         }
+
+    @staticmethod
+    def main():
+        root = _resolve_project_root()
+        default_csv = root / "database" / "csv" / "Acetylcholinesterase_Homo_sapiens_cleaned.csv"
+        if not default_csv.exists():
+            raise FileNotFoundError(f"Expected cleaned dataset not found: {default_csv}")
+
+        runner = Model(default_csv)
+        comparison = runner.compare_models(n_trials=5)
+        print(comparison.to_string(index=False))
+        return comparison
