@@ -421,6 +421,7 @@ def InChIKeyConversion(smiles_string):
 
 
 def calculate_molecular_descriptors(smiles):
+    
     def num_aliphatic_nitrogens(mol):
         return sum(
             atom.GetAtomicNum() == 7
@@ -429,6 +430,7 @@ def calculate_molecular_descriptors(smiles):
         )
 
     bio_descriptors = {
+        
         "MolWt": Descriptors.MolWt,
         "MolLogP": Descriptors.MolLogP,
         "NumHDonors": Lipinski.NumHDonors,
@@ -443,6 +445,7 @@ def calculate_molecular_descriptors(smiles):
         "RingCount": Lipinski.RingCount,
         "NumAliphaticNitrogens": num_aliphatic_nitrogens,
         "NumFormalCharge": Chem.GetFormalCharge
+    
     }
 
     empty_features = {
