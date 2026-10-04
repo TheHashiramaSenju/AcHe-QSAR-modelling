@@ -1,6 +1,7 @@
 import argparse
 import copy
 import random
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -97,7 +98,7 @@ def extract_atomic_features(mol):
                 atom.GetDegree(),
                 atom.GetFormalCharge(),
                 HYBRIDIZATION_MAP.get(atom.GetHybridization(), 0),
-                float(atom.IsAromatic()),
+                float(atom.GetIsAromatic()),
                 atom.GetTotalNumHs(),
                 float(atom.IsInRing()),
             ]
@@ -191,8 +192,14 @@ def _create_graph_sample(source_index, smiles, target):
         [descriptor_map.get(name, np.nan) for name in DESCRIPTOR_COLUMNS],
         dtype=np.float32,
     )
-    if not np.isfinite(global_features).all():
-        raise ValueError("Molecular descriptors contain non-finite values")
+    finite_mask = np.isfinite(global_features)
+    charge_indices = {
+        DESCRIPTOR_COLUMNS.index("MaxPartialCharge"),
+        DESCRIPTOR_COLUMNS.index("MinPartialCharge"),
+    }
+    missing_indices = set(np.flatnonzero(~finite_mask))
+    if missing_indices.difference(charge_indices) or np.isinf(global_features).any():
+        raise ValueError("Molecular descriptors contain unsupported non-finite values")
 
     bond_features = extract_edge_features(mol)
     edge_pairs = []
@@ -276,10 +283,8 @@ def _validation_split(samples, train_indices, fraction, seed):
     if not 0.0 < fraction < 0.5:
         raise ValueError("Validation fraction must be between 0 and 0.5")
     frame = pd.DataFrame(
-        {
-            "sample_index": train_indices,
-            "scaffold": [samples[index].scaffold for index in train_indices],
-        }
+        {"scaffold": [samples[index].scaffold for index in train_indices]},
+        index=train_indices,
     )
     groups = frame.groupby("scaffold").groups
     if len(groups) < 2:
@@ -289,11 +294,13 @@ def _validation_split(samples, train_indices, fraction, seed):
     validation_target = max(1, int(len(train_indices) * fraction))
     validation_indices = []
     remaining_indices = []
-    for scaffold in scaffold_keys:
+    for position, scaffold in enumerate(scaffold_keys):
         row_indices = list(groups[scaffold])
-        if len(validation_indices) < validation_target and len(scaffold_keys) > 1:
+        if (
+            len(validation_indices) < validation_target
+            and position < len(scaffold_keys) - 1
+        ):
             validation_indices.extend(row_indices)
-            scaffold_keys.pop()
         else:
             remaining_indices.extend(row_indices)
     if not validation_indices or not remaining_indices:
@@ -499,6 +506,40 @@ def _save_diagnostics(actual, predicted, output_path):
     plt.close(figure)
 
 
+def _resolve_device(device_name):
+    if device_name in {"auto", "cpu"}:
+        return torch.device("cpu"), "cpu"
+    if device_name != "cuda":
+        raise ValueError("Device must be 'auto', 'cpu', or 'cuda'")
+    if not torch.backends.cuda.is_built():
+        raise RuntimeError("This PyTorch installation was not built with CUDA support")
+
+    supported_architectures = set(torch.cuda.get_arch_list())
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            available_devices = [
+                (index, torch.cuda.get_device_capability(index))
+                for index in range(torch.cuda.device_count())
+            ]
+    except (RuntimeError, torch.AcceleratorError) as error:
+        raise RuntimeError("Could not inspect CUDA device compatibility") from error
+
+    for index, (major, minor) in available_devices:
+        architecture = f"sm_{major}{minor}"
+        if architecture in supported_architectures:
+            return torch.device(f"cuda:{index}"), f"cuda:{index}"
+
+    detected = ", ".join(
+        f"sm_{major}{minor}" for _, (major, minor) in available_devices
+    ) or "no CUDA device detected"
+    supported = ", ".join(sorted(supported_architectures)) or "none"
+    raise RuntimeError(
+        f"CUDA device architecture ({detected}) is not supported by this PyTorch "
+        f"build ({supported}). Run with --device cpu."
+    )
+
+
 def train_gnn(
     dataset_path=None,
     epochs=150,
@@ -510,7 +551,7 @@ def train_gnn(
     hidden_size=128,
     message_passing_steps=3,
     seed=50,
-    device_name="auto",
+    device_name="cpu",
 ):
     if torch is None:
         raise ImportError("PyTorch is required. Install it in the Python environment used to run this script.")
@@ -531,17 +572,12 @@ def train_gnn(
     for directory in (log_path, model_path, figure_path):
         directory.mkdir(parents=True, exist_ok=True)
 
+    device, selected_device = _resolve_device(device_name)
     random.seed(seed)
     np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
+    torch.random.default_generator.manual_seed(seed)
+    if selected_device.startswith("cuda"):
         torch.cuda.manual_seed_all(seed)
-    selected_device = (
-        "cuda" if device_name == "auto" and torch.cuda.is_available()
-        else "cpu" if device_name == "auto"
-        else device_name
-    )
-    device = torch.device(selected_device)
 
     samples, rejected = load_graph_dataset(dataset_path)
     rejected.to_csv(log_path / "GNN_rejected_rows.csv", index=False)
@@ -562,9 +598,20 @@ def train_gnn(
     train_descriptors = np.stack(
         [samples[index].global_features for index in train_indices]
     ).astype(np.float32)
-    descriptor_mean = train_descriptors.mean(axis=0)
-    descriptor_scale = train_descriptors.std(axis=0)
+    descriptor_mean = np.nanmean(train_descriptors, axis=0)
+    descriptor_mean = np.nan_to_num(descriptor_mean, nan=0.0, posinf=0.0, neginf=0.0)
+    imputed_train_descriptors = np.where(
+        np.isfinite(train_descriptors), train_descriptors, descriptor_mean
+    )
+    descriptor_scale = imputed_train_descriptors.std(axis=0)
     descriptor_scale[descriptor_scale < 1e-8] = 1.0
+    imputed_descriptor_values = int(np.isnan(train_descriptors).sum())
+    for sample in samples:
+        sample.global_features = np.where(
+            np.isfinite(sample.global_features),
+            sample.global_features,
+            descriptor_mean,
+        ).astype(np.float32)
     train_targets = np.asarray(
         [samples[index].target for index in train_indices], dtype=np.float32
     )
@@ -713,6 +760,7 @@ def train_gnn(
         "n_validation_scaffolds": len(validation_scaffolds),
         "n_test_scaffolds": len(test_scaffolds),
         "n_rejected": len(rejected),
+        "n_train_descriptor_values_imputed": imputed_descriptor_values,
         "n_node_features": len(ATOM_FEATURE_COLUMNS),
         "n_edge_features": len(EDGE_FEATURE_COLUMNS),
         "n_global_features": len(DESCRIPTOR_COLUMNS),
@@ -760,7 +808,7 @@ def main():
     parser.add_argument("--hidden-size", type=int, default=128)
     parser.add_argument("--message-passing-steps", type=int, default=3)
     parser.add_argument("--seed", type=int, default=50)
-    parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
+    parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="cpu")
     arguments = parser.parse_args()
     train_gnn(
         dataset_path=arguments.data,
