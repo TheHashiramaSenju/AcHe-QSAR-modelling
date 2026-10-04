@@ -1,5 +1,6 @@
 
-import data_engineering as DataEng 
+import argparse
+import data_engineering as data_engineering_module
 from pathlib import Path
 import pandas as pd
 from sklearn.model_selection import GroupKFold
@@ -17,15 +18,19 @@ import numpy as np
 from sklearn.metrics import mean_absolute_error
 
 
+def _resolve_project_root() -> Path:
+    return Path(__file__).resolve().parent.parent
 
-OUTPUT_DIR = "/media/notshadow/d5dd988b-c393-4302-aa45-32bcfc8463c2/WorkFolder/DrugDiscovery-BioInformatics/output"
+
+
+OUTPUT_DIR = _resolve_project_root() / "output"
 
 
 class Model:
 
     def __init__(self, path: Path):
         
-        self.de = DataEng(path=path)
+        self.de = data_engineering_module.DataEng(path=path)
         self.df_morgan, self.df_rdkit = self.de.molecular_desc()
         self.output_path = Path(OUTPUT_DIR)
         self.figure_path = self.output_path / "figures"
@@ -46,7 +51,7 @@ class Model:
                 'bootstrap' : bootstrap,
                 'criterion' : 'squared_error',
                 'ccp_alpha' : trial.suggest_float('ccp_alpha', 1e-8, 1e-2, log=True), 
-                'n_jobs' : 1, 
+                'n_jobs' : -1, 
                 'random_state' : 50
             }
             model = RandomForestRegressor(**params)
@@ -60,7 +65,7 @@ class Model:
                 "colsample_bytree": trial.suggest_float("xgb_colsample", 0.5, 1.0),
                 "reg_alpha": trial.suggest_float("xgb_alpha", 1e-8, 10.0, log=True),  
                 "reg_lambda": trial.suggest_float("xgb_lambda", 1e-8, 10.0, log=True), 
-                "n_jobs": 1,
+                "n_jobs": -1,
                 "random_state": 50,
             }
             model = xgb.XGBRegressor(**params)
@@ -75,7 +80,7 @@ class Model:
                 "colsample_bytree": trial.suggest_float("lgb_colsample", 0.5, 1.0),
                 "reg_alpha": trial.suggest_float("lgb_alpha", 1e-8, 10.0, log=True),
                 "reg_lambda": trial.suggest_float("lgb_lambda", 1e-8, 10.0, log=True),
-                "n_jobs": 1,
+                "n_jobs": -1,
                 "random_state": 50,
                 "verbose": -1,  
             }
@@ -372,9 +377,74 @@ class Model:
         fig.savefig(self.figure_path / "statistical_model_diagnostics.png", dpi=200)
         plt.close(fig)
 
+    def _pipeline_dataset_path(self):
+        pipeline_path = self.de.path.parent / f"{self.de.path.stem}_pipeline"
+        if not pipeline_path.exists():
+            self.de.finaldrop()
+        if not pipeline_path.exists():
+            raise FileNotFoundError(f"Pipeline dataset was not generated: {pipeline_path}")
+        return pipeline_path
+
+    def GNNModel(self, **training_options):
+        if __package__:
+            from .GNNmodel import train_gnn
+        else:
+            from GNNmodel import train_gnn
+        return train_gnn(
+            dataset_path=self._pipeline_dataset_path(),
+            **training_options,
+        )
+
+    def run_gnn_classical_audit(self, trials=8, folds=3):
+        if __package__:
+            from .baseline_gnn_audit import run_audit
+        else:
+            from baseline_gnn_audit import run_audit
+        return run_audit(
+            trials=trials,
+            folds=folds,
+            dataset_path=self._pipeline_dataset_path(),
+        )
+
     def output_locations(self):
         return {
             "models": self.model_path,
             "figures": self.figure_path,
             "logs": self.log_path,
+            "audit": self.output_path / "audit" / "GNN_classical_comparison",
         }
+
+    @staticmethod
+    def main(argv=None):
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--trials", type=int, default=5)
+        parser.add_argument("--gnn-audit", action="store_true")
+        parser.add_argument("--gnn-trials", type=int, default=8)
+        parser.add_argument("--gnn-folds", type=int, default=3)
+        parser.add_argument("--gnn-epochs", type=int, default=150)
+        parser.add_argument("--device", choices=["cpu", "cuda"], default="cpu")
+        arguments = parser.parse_args(argv)
+
+        root = _resolve_project_root()
+        default_csv = root / "database" / "csv" / "Acetylcholinesterase_Homo_sapiens_cleaned.csv"
+        if not default_csv.exists():
+            raise FileNotFoundError(f"Expected cleaned dataset not found: {default_csv}")
+
+        runner = Model(default_csv)
+        if arguments.gnn_audit:
+            runner.GNNModel(
+                epochs=arguments.gnn_epochs,
+                device_name=arguments.device,
+            )
+            audit_path = runner.run_gnn_classical_audit(
+                trials=arguments.gnn_trials,
+                folds=arguments.gnn_folds,
+            )
+            comparison = pd.read_csv(audit_path / "comparison_metrics.csv")
+            print(comparison.to_string(index=False))
+            print(f"GNN comparison audit: {audit_path}")
+            return comparison
+
+        comparison = runner.compare_models(n_trials=arguments.trials)
+        print(comparison.to_string(index=False))
+        return comparison

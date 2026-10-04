@@ -1,0 +1,154 @@
+{
+  "overall_status": "NOT YET TRUSTWORTHY",
+  "critical_issues": [
+    {
+      "issue": "unit-inconsistent potency threshold",
+      "file": "src/CDDgem.py",
+      "function": "DataCleaning.relationalvalue",
+      "lines": "[src/CDDgem.py](src/CDDgem.py#L440-L456)",
+      "what_current_code_does": "Uses raw standard_value <= 10000 after unit normalization exists elsewhere.",
+      "why_it_matters": "Raw standard_value does not represent the same physical concentration across all units; a true 10,000 nM threshold should be applied after conversion to nM.",
+      "affects_current_mae": "Potentially, but limited in this snapshot.",
+      "affects_only_interpretation": false,
+      "severity": "CRITICAL",
+      "minimal_required_correction": "Normalize all values to nM before any potency thresholding and apply the threshold to IC50_nM, not raw standard_value.",
+      "must_discard_recompute": true
+    }
+  ],
+  "high_priority_issues": [
+    {
+      "issue": "split is deterministic greedy scaffold allocation, not a random scaffold split",
+      "file": "src/CDDgem.py",
+      "function": "DataEng._split_frame",
+      "lines": "[src/CDDgem.py](src/CDDgem.py#L730-L767)",
+      "what_current_code_does": "Sorts scaffolds by size and greedily fills the training set until the target size is reached.",
+      "why_it_matters": "This is a valid but non-random benchmark design; interpretation should be restricted to scaffold extrapolation rather than general QSAR generalization.",
+      "affects_current_mae": true,
+      "affects_only_interpretation": true,
+      "severity": "HIGH",
+      "minimal_required_correction": "Document this as a deterministic size-sorted scaffold split and report it as such in the benchmark design.",
+      "must_discard_recompute": false
+    }
+  ],
+  "medium_issues": [
+    {
+      "issue": "duplicate aggregation is performed before later filtering, which is a cohort-definition issue",
+      "file": "src/CDDgem.py",
+      "function": "DataCleaning.InChI_based_duplicate_res",
+      "lines": "[src/CDDgem.py](src/CDDgem.py#L398-L416)",
+      "what_current_code_does": "Computes the median PIC50 per InChIKey before relation and potency filtering.",
+      "why_it_matters": "Target construction depends on the pre-filter cohort; it is not necessarily leakage, but it changes the scientific interpretation.",
+      "affects_current_mae": false,
+      "affects_only_interpretation": true,
+      "severity": "MEDIUM",
+      "minimal_required_correction": "Document the cohort-definition order explicitly and, if desired, apply filter logic before target aggregation in a sensitivity analysis.",
+      "must_discard_recompute": false
+    }
+  ],
+  "low_priority_issues": [
+    {
+      "issue": "unused random split helper",
+      "file": "src/CDDgem.py",
+      "function": "Validation.random_split",
+      "lines": "[src/CDDgem.py](src/CDDgem.py#L1179-L1184)",
+      "what_current_code_does": "Defines a random split but it is not used in the current final model path.",
+      "why_it_matters": "It should not be interpreted as evidence of random-split evaluation.",
+      "affects_current_mae": false,
+      "affects_only_interpretation": true,
+      "severity": "LOW",
+      "minimal_required_correction": "Remove or clearly mark it as a deprecated unused helper if it is not part of the benchmark design.",
+      "must_discard_recompute": false
+    }
+  ],
+  "non_issues": [
+    "The formula for pIC50 from normalized IC50 is mathematically correct.",
+    "The current scaffold split shows zero scaffold and molecule overlap in the current snapshot.",
+    "The nested Optuna GroupKFold design remains isolated from the held-out test set.",
+    "The raw ChEMBL retrieval is target-specific and IC50-specific and consistent with a CHEMBL220 dataset."
+  ],
+  "data_counts": {
+    "raw_rows": 8793,
+    "unique_target_chembl_id": 1,
+    "unique_molecule_chembl_id": 7179,
+    "unique_assay_chembl_id": 1020,
+    "standard_type_unique": ["IC50"],
+    "standard_units_unique": ["nM", "ug.mL-1", "10'5pM", "10'6pM", "10^-4microM", "10'3pM"],
+    "standard_relation_unique": ["=", ">", "<", "~", ">>"] ,
+    "final_rows_current_behavior": 4571,
+    "final_unique_inchi_keys": 4571,
+    "train_molecules": 3656,
+    "test_molecules": 915,
+    "train_scaffolds": 1191,
+    "test_scaffolds": 915,
+    "shared_scaffolds": 0,
+    "shared_inchi_keys": 0,
+    "shared_cleaned_smiles": 0
+  },
+  "unit_analysis": {
+    "supported_unit_factors": {
+      "nM": 1.0,
+      "10'3pM": 1.0,
+      "10'5pM": 100.0,
+      "10'6pM": 1000.0
+    },
+    "raw_unit_counts": {
+      "nM": 8702,
+      "ug.mL-1": 83,
+      "10'5pM": 3,
+      "10'6pM": 2,
+      "10^-4microM": 2,
+      "10'3pM": 1
+    },
+    "threshold_physical_inconsistency": true,
+    "threshold_applied_to": "raw standard_value",
+    "recommended_target": "IC50_nM"
+  },
+  "duplicate_analysis": {
+    "replicate_groups": 6421,
+    "groups_mad_over_1": 34,
+    "rows_in_groups_mad_over_1": 74,
+    "target_change_from_excluded_rows": 0,
+    "max_abs_target_delta": 0.0,
+    "median_abs_target_delta": 0.0,
+    "scientific_assumption": "robust median representative per InChIKey / cleaned_smiles group"
+  },
+  "split_analysis": {
+    "split_type": "deterministic size-sorted greedy scaffold split",
+    "train_fraction": 0.8,
+    "test_fraction": 0.2,
+    "scaffold_overlap": false,
+    "molecule_overlap": false
+  },
+  "leakage_analysis": {
+    "molecule_level_leakage": false,
+    "scaffold_level_leakage": false,
+    "feature_identifier_leakage": false,
+    "target_feature_leakage": false
+  },
+  "cv_analysis": {
+    "group_kfold_used": true,
+    "n_splits": 5,
+    "groups_are_scaffold_identifiers": true,
+    "optuna_isolated_from_test_set": true
+  },
+  "optuna_analysis": {
+    "used": true,
+    "direction": "maximize",
+    "metric": "neg_mean_absolute_error",
+    "correct_math": true,
+    "search_parameter_inactive": false
+  },
+  "metric_analysis": {
+    "mae": 0.63,
+    "rmse": "not independently recomputed here",
+    "r2": "not independently recomputed here",
+    "pearson": "not independently recomputed here",
+    "spearman": "not independently recomputed here",
+    "interpretation": "The MAE may be a valid scaffold test estimate under the current split, but it is not fully trustworthy as a unit-consistent QSAR benchmark because the thresholding and target construction are not physically consistent across units."
+  },
+  "reproducibility_analysis": {
+    "seeded_randomness_present": true,
+    "full_end_to_end_reproducible": "PARTIALLY",
+    "dependency_version_control_required": true
+  }
+}

@@ -1,0 +1,16 @@
+phase,signature,rows,distinct_signatures,duplicate_excess_rows
+after_pIC50_before_current_resolution,cleaned_smiles,7185,6422,763
+after_pIC50_before_current_resolution,InChIkey,7185,6422,763
+after_pIC50_before_current_resolution,PIC50,7185,2961,4224
+after_pIC50_before_current_resolution,cleaned_smiles + PIC50,7185,7091,94
+after_pIC50_before_current_resolution,InChIkey + PIC50,7185,7091,94
+after_current_MAD_and_exact_dedup,cleaned_smiles,6387,6387,0
+after_current_MAD_and_exact_dedup,InChIkey,6387,6387,0
+after_current_MAD_and_exact_dedup,PIC50,6387,3003,3384
+after_current_MAD_and_exact_dedup,cleaned_smiles + PIC50,6387,6387,0
+after_current_MAD_and_exact_dedup,InChIkey + PIC50,6387,6387,0
+final_current_filter,cleaned_smiles,4571,4571,0
+final_current_filter,InChIkey,4571,4571,0
+final_current_filter,PIC50,4571,2265,2306
+final_current_filter,cleaned_smiles + PIC50,4571,4571,0
+final_current_filter,InChIkey + PIC50,4571,4571,0
