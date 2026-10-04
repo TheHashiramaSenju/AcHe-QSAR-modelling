@@ -1,4 +1,5 @@
 
+import argparse
 import data_engineering as data_engineering_module
 from pathlib import Path
 import pandas as pd
@@ -22,7 +23,7 @@ def _resolve_project_root() -> Path:
 
 
 
-OUTPUT_DIR = "/media/notshadow/d5dd988b-c393-4302-aa45-32bcfc8463c2/WorkFolder/DrugDiscovery-BioInformatics/output"
+OUTPUT_DIR = _resolve_project_root() / "output"
 
 
 class Model:
@@ -376,21 +377,74 @@ class Model:
         fig.savefig(self.figure_path / "statistical_model_diagnostics.png", dpi=200)
         plt.close(fig)
 
+    def _pipeline_dataset_path(self):
+        pipeline_path = self.de.path.parent / f"{self.de.path.stem}_pipeline"
+        if not pipeline_path.exists():
+            self.de.finaldrop()
+        if not pipeline_path.exists():
+            raise FileNotFoundError(f"Pipeline dataset was not generated: {pipeline_path}")
+        return pipeline_path
+
+    def GNNModel(self, **training_options):
+        if __package__:
+            from .GNNmodel import train_gnn
+        else:
+            from GNNmodel import train_gnn
+        return train_gnn(
+            dataset_path=self._pipeline_dataset_path(),
+            **training_options,
+        )
+
+    def run_gnn_classical_audit(self, trials=8, folds=3):
+        if __package__:
+            from .baseline_gnn_audit import run_audit
+        else:
+            from baseline_gnn_audit import run_audit
+        return run_audit(
+            trials=trials,
+            folds=folds,
+            dataset_path=self._pipeline_dataset_path(),
+        )
+
     def output_locations(self):
         return {
             "models": self.model_path,
             "figures": self.figure_path,
             "logs": self.log_path,
+            "audit": self.output_path / "audit" / "GNN_classical_comparison",
         }
 
     @staticmethod
-    def main():
+    def main(argv=None):
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--trials", type=int, default=5)
+        parser.add_argument("--gnn-audit", action="store_true")
+        parser.add_argument("--gnn-trials", type=int, default=8)
+        parser.add_argument("--gnn-folds", type=int, default=3)
+        parser.add_argument("--gnn-epochs", type=int, default=150)
+        parser.add_argument("--device", choices=["cpu", "cuda"], default="cpu")
+        arguments = parser.parse_args(argv)
+
         root = _resolve_project_root()
         default_csv = root / "database" / "csv" / "Acetylcholinesterase_Homo_sapiens_cleaned.csv"
         if not default_csv.exists():
             raise FileNotFoundError(f"Expected cleaned dataset not found: {default_csv}")
 
         runner = Model(default_csv)
-        comparison = runner.compare_models(n_trials=5)
+        if arguments.gnn_audit:
+            runner.GNNModel(
+                epochs=arguments.gnn_epochs,
+                device_name=arguments.device,
+            )
+            audit_path = runner.run_gnn_classical_audit(
+                trials=arguments.gnn_trials,
+                folds=arguments.gnn_folds,
+            )
+            comparison = pd.read_csv(audit_path / "comparison_metrics.csv")
+            print(comparison.to_string(index=False))
+            print(f"GNN comparison audit: {audit_path}")
+            return comparison
+
+        comparison = runner.compare_models(n_trials=arguments.trials)
         print(comparison.to_string(index=False))
         return comparison

@@ -244,7 +244,7 @@ def _train_variant(model_type, variant, matrix, samples, train_indices, test_ind
     return result, predictions
 
 
-def _write_report(report_path, results, samples, rejected, train_indices, validation_indices, test_indices, trials, folds):
+def _write_report(report_path, results, samples, rejected, train_indices, validation_indices, test_indices, trials, folds, dataset_path):
     result_frame = pd.DataFrame(results).sort_values("test_mae")
     gnn_row = result_frame[result_frame["model"] == "GNN"].iloc[0]
     baseline_rows = result_frame[result_frame["model"] != "GNN"]
@@ -287,11 +287,17 @@ def _write_report(report_path, results, samples, rejected, train_indices, valida
     node_text = ", ".join(ATOM_FEATURE_COLUMNS)
     descriptor_text = ", ".join(DESCRIPTOR_COLUMNS)
     edge_text = ", ".join(EDGE_FEATURE_COLUMNS)
+    try:
+        dataset_label = dataset_path.resolve().relative_to(
+            _resolve_project_root()
+        ).as_posix()
+    except ValueError:
+        dataset_label = str(dataset_path)
     report = f"""# GNN and Classical Baseline Audit
 
 ## Data and partitions
 
-- Source table: `{_resolve_default_dataset().relative_to(_resolve_project_root())}`
+- Source table: `{dataset_label}`
 - Valid graph records: {len(samples)}; rejected records: {len(rejected)}
 - Train / validation / test rows: {len(train_indices)} / {len(validation_indices)} / {len(test_indices)}
 - Every partition exactly matches the saved GNN source-row IDs; scaffold groups are disjoint.
@@ -327,12 +333,16 @@ This is one fixed scaffold split. Treat the comparison as evidence for this part
     report_path.write_text(report, encoding="utf-8")
 
 
-def run_audit(trials=8, folds=3):
+def run_audit(trials=8, folds=3, dataset_path=None):
     if trials < 1 or folds < 2:
         raise ValueError("trials must be positive and folds must be at least 2")
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
-    dataset_path = _resolve_default_dataset()
+    dataset_path = Path(dataset_path) if dataset_path else _resolve_default_dataset()
+    if not dataset_path.is_absolute():
+        dataset_path = _resolve_project_root() / dataset_path
+    if not dataset_path.exists():
+        raise FileNotFoundError(f"Dataset not found: {dataset_path}")
     samples, rejected = load_graph_dataset(dataset_path)
     train_and_validation, test_indices = _baseline_scaffold_split(samples)
     train_indices, validation_indices = _validation_split(
@@ -459,6 +469,7 @@ def run_audit(trials=8, folds=3):
         test_indices,
         trials,
         folds,
+        dataset_path,
     )
     saved_splits["test"].to_csv(output_directory / "matched_gnn_test_rows.csv", index=False)
     return output_directory
