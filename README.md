@@ -22,8 +22,8 @@
 ![Cheminformatics](https://img.shields.io/badge/Cheminformatics-RDKit-2E7D32?style=for-the-badge)
 ![Target](https://img.shields.io/badge/Target-AChE%20%7C%20CHEMBL220-6A4C93?style=for-the-badge)
 ![Task](https://img.shields.io/badge/Task-pIC50%20Regression-1565C0?style=for-the-badge)
-![GNN](https://img.shields.io/badge/GNN-Ongoing-D97706?style=for-the-badge)
-![PiGNN](https://img.shields.io/badge/PiGNN-Ongoing-B45309?style=for-the-badge)
+![GNN](https://img.shields.io/badge/GNN-Completed-D97706?style=for-the-badge)
+![PiGNN](https://img.shields.io/badge/PiGNN-Dropped-B45309?style=for-the-badge)
 
 <br><br>
 
@@ -526,10 +526,10 @@ AChE-Molecular-ML/
 | Optuna optimization | ✅ |
 | Grouped CV | ✅ |
 | Multi-metric evaluation | ✅ |
-| Residual analysis | 🔄 Refinement |
-| Dataset / validation audit | 🔄 Ongoing |
-| GNN | 🚧 Ongoing |
-| PiGNN | 🚧 Ongoing |
+| Residual analysis | ✅ |
+| Dataset / validation audit |  ✅ |
+| GNN |  ✅ |
+| PiGNN | Scientifically-Dropped |
 
 ---
 
