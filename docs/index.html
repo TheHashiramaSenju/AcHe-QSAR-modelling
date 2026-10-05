@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AChE QSAR Modelling — Scientific Report</title>
+<meta name="description" content="Structure-aware molecular machine learning for acetylcholinesterase inhibitory potency prediction.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#top"><span class="brand-mark">✣</span><span>AChE QSAR Modelling</span></a>
+  <nav class="topnav">
+    <a href="#overview">Overview</a><a href="#results">Results</a><a href="#reproducibility">Reproducibility</a><a href="https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling" target="_blank" rel="noreferrer">GitHub ↗</a>
+  </nav>
+</header>
+<div class="layout" id="top">
+<aside class="sidebar">
+  <div class="side-title">Scientific report</div>
+  <a href="#overview">01 · Overview</a>
+  <a href="#objective">02 · Objective</a>
+  <a href="#dataset">03 · Dataset</a>
+  <a href="#curation">04 · Data curation</a>
+  <a href="#representation">05 · Molecular representation</a>
+  <a href="#validation">06 · Experimental design</a>
+  <a href="#classical">07 · Classical ML</a>
+  <a href="#gnn">08 · Graph neural network</a>
+  <a href="#results">09 · Results</a>
+  <a href="#audit">10 · Scientific audit</a>
+  <a href="#limitations">11 · Limitations</a>
+  <a href="#reproducibility">12 · Reproducibility</a>
+  <a href="#future">13 · Future direction</a>
+  <a href="#references">14 · References & repository</a>
+</aside>
+<main class="content">
+<section class="hero" id="overview">
+  <div class="hero-copy">
+    <div class="eyebrow">COMPUTATIONAL CHEMISTRY · QSAR · MOLECULAR MACHINE LEARNING</div>
+    <h1>AChE QSAR<br><span>Modelling</span></h1>
+    <p class="hero-sub">Structure-aware prediction of acetylcholinesterase inhibitory potency from molecular structure.</p>
+    <div class="chips"><span>Target · CHEMBL220</span><span>Endpoint · IC50 → pIC50</span><span>ChEMBL</span></div>
+    <div class="hero-actions"><a class="button primary" href="https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling" target="_blank" rel="noreferrer">View GitHub repository ↗</a><a class="button" href="#results">Read results ↓</a></div>
+  </div>
+  <div class="hero-visual"><img src="https://raw.githubusercontent.com/TheHashiramaSenju/AcHe-QSAR-modelling/senju/assets/archbannertop.png" alt="Repository architecture banner"></div>
+</section>
+
+<section class="intro-grid">
+  <div class="stat"><strong>8,793</strong><span>raw rows in the audited snapshot</span></div>
+  <div class="stat"><strong>4,571</strong><span>final rows / unique InChIKeys reported by the audit</span></div>
+  <div class="stat"><strong>3</strong><span>classical model families</span></div>
+  <div class="stat"><strong>1</strong><span>GNN result saved in the repository</span></div>
+</section>
+
+<div class="audit-banner"><div class="audit-dot"></div><div><strong>Scientific audit status</strong><p>The repository forensic audit classifies the current benchmark as <b>NOT YET TRUSTWORTHY</b> as a fully unit-consistent QSAR benchmark. The main issue identified is the potency threshold being applied to raw <code>standard_value</code> rather than normalized IC50. This report preserves that finding instead of presenting the benchmark as publication-ready.</p></div></div>
+
+<section id="objective">
+  <div class="section-kicker">02 · OBJECTIVE</div><h2>What the project evaluates</h2>
+  <p>The repository formulates the task as continuous <b>pIC50 regression</b> from molecular structure:</p>
+  <div class="equation">pIC<sub>50</sub> = −log<sub>10</sub>(IC<sub>50</sub> [M])</div>
+  <div class="flow"><div>Molecular structure</div><span>→</span><div>Molecular representation</div><span>→</span><div>Machine learning model</div><span>→</span><div>Predicted pIC50</div></div>
+  <div class="card-grid three"><div class="card"><b>Representation</b><p>How informative are circular fingerprints and molecular descriptors?</p></div><div class="card"><b>Generalization</b><p>How does structural separation affect model performance?</p></div><div class="card"><b>Model family</b><p>How do classical ensembles compare, and what does a graph representation add?</p></div></div>
+</section>
+
+<section id="dataset">
+  <div class="section-kicker">03 · DATASET</div><h2>ChEMBL activity data</h2>
+  <p>The repository uses ChEMBL activity data for <b>acetylcholinesterase (AChE)</b>, target <code>CHEMBL220</code>, with <code>IC50</code> as the activity endpoint and <code>pIC50</code> as the learning target.</p>
+  <div class="table-wrap"><table><tbody><tr><th>Property</th><th>Configuration</th></tr><tr><td>Data source</td><td>ChEMBL</td></tr><tr><td>Target</td><td>Acetylcholinesterase</td></tr><tr><td>ChEMBL target ID</td><td><code>CHEMBL220</code></td></tr><tr><td>Activity endpoint</td><td><code>IC50</code></td></tr><tr><td>Learning target</td><td><code>pIC50</code></td></tr><tr><td>Task</td><td>Continuous regression</td></tr></tbody></table></div>
+  <div class="callout"><b>Raw snapshot audit.</b> The forensic report records 8,793 raw rows, 7,179 unique molecule ChEMBL IDs, 1,020 unique assay ChEMBL IDs, IC50-only standard type, and multiple reported standard relations and units.</div>
+</section>
+
+<section id="curation">
+  <div class="section-kicker">04 · DATA CURATION</div><h2>From activity records to a molecular regression cohort</h2>
+  <p>The documented pipeline performs validation, salt removal and SMILES cleaning, InChIKey generation, duplicate handling, unit normalization, pIC50 conversion, replicate aggregation, and activity filtering.</p>
+  <div class="pipeline"><span>ChEMBL activity records</span><i>→</i><span>Validation</span><i>→</i><span>Salt removal</span><i>→</i><span>InChIKey</span><i>→</i><span>Duplicates</span><i>→</i><span>IC50 normalization</span><i>→</i><span>pIC50</span><i>→</i><span>Replicate QC</span><i>→</i><span>Filtering</span></div>
+  <div class="card-grid two"><div class="card"><h3>Structure audit</h3><ul><li>1 failed RDKit parse row</li><li>1 empty or invalid cleaned SMILES</li><li>90 disconnected molecules after salt removal</li><li>0 unusual elements</li></ul></div><div class="card"><h3>Replicate analysis</h3><ul><li>6,421 replicate groups</li><li>34 groups with MAD &gt; 1</li><li>74 rows in those groups</li><li>0.0 maximum absolute target delta from excluded rows in the audit</li></ul></div></div>
+  <div class="warning"><b>Unit-threshold issue identified by the audit.</b> The pipeline applies <code>standard_value &lt;= 10000</code> after unit normalization exists elsewhere. Because raw standard values have different physical meanings across units, the audit recommends applying the threshold to normalized <code>IC50_nM</code> instead.</div>
+</section>
+
+<section id="representation">
+  <div class="section-kicker">05 · MOLECULAR REPRESENTATION</div><h2>Two engineered feature spaces</h2>
+  <div class="card-grid two"><div class="card feature-card"><div class="feature-num">01</div><h3>Morgan fingerprint</h3><p>Circular molecular fingerprint with <b>radius 2</b> and <b>1024 bits</b>.</p><div class="mini-code">Molecule → circular atom environments → 1024-bit vector</div></div><div class="card feature-card"><div class="feature-num">02</div><h3>RDKit descriptors</h3><p>The documented descriptor set includes molecular weight, MolLogP, H-bond donors/acceptors, TPSA, partial-charge descriptors, heteroatoms, rotatable bonds, FractionCSP3, ring counts, aliphatic nitrogen count, and formal charge.</p></div></div>
+  <div class="table-wrap"><table><thead><tr><th>Configuration</th><th>Input</th></tr></thead><tbody><tr><td>Morgan</td><td>1024-bit Morgan fingerprint</td></tr><tr><td>RDKit</td><td>Molecular descriptors</td></tr><tr><td>Combined</td><td>Morgan + RDKit descriptors</td></tr></tbody></table></div>
+</section>
+
+<section id="validation">
+  <div class="section-kicker">06 · EXPERIMENTAL DESIGN</div><h2>Scaffold-aware evaluation</h2>
+  <p>The repository groups molecules by <b>Bemis–Murcko scaffold</b> and assigns whole scaffold groups to partitions. The forensic audit identifies the actual implementation as a <b>deterministic size-sorted greedy scaffold split</b>, not a random scaffold split.</p>
+  <div class="split-stats"><div><strong>3,656</strong><span>train molecules</span></div><div><strong>915</strong><span>test molecules</span></div><div><strong>1,191</strong><span>train scaffolds</span></div><div><strong>915</strong><span>test scaffolds</span></div><div><strong>0</strong><span>shared scaffolds</span></div><div><strong>0</strong><span>shared InChIKeys</span></div></div>
+  <figure><img src="https://raw.githubusercontent.com/TheHashiramaSenju/AcHe-QSAR-modelling/senju/assets/splits.png" alt="Scaffold split diagram"><figcaption>Scaffold partitioning diagram from the repository.</figcaption></figure>
+  <div class="card-grid two"><div class="card"><h3>Grouped CV</h3><p>The classical ML optimization uses <b>5-fold GroupKFold</b> with scaffold identity as the grouping variable.</p></div><div class="card"><h3>Test isolation</h3><p>The audit reports that Optuna is isolated from the held-out test set and that the current snapshot has zero scaffold and molecule overlap.</p></div></div>
+</section>
+
+<section id="classical">
+  <div class="section-kicker">07 · CLASSICAL MACHINE LEARNING</div><h2>Tree-based ensemble benchmark</h2>
+  <div class="model-strip"><span>Random Forest</span><span>XGBoost</span><span>LightGBM</span></div>
+  <p>Each model family is evaluated across Morgan, RDKit descriptor, and combined representations. Hyperparameter selection is performed with Optuna using scaffold-grouped cross-validation and MAE as the optimization metric.</p>
+  <div class="flow compact"><div>Training data</div><span>→</span><div>5-fold scaffold GroupKFold</div><span>→</span><div>Optuna</div><span>→</span><div>Final model</div><span>→</span><div>Held-out test</div></div>
+</section>
+
+<section id="gnn">
+  <div class="section-kicker">08 · GRAPH NEURAL NETWORK</div><h2>Graph-based molecular representation</h2>
+  <p>The repository contains a saved GNN evaluation. The audit records <b>7 node features</b>, <b>13 edge features</b>, and <b>14 global features</b>, with 3,108 training rows, 548 validation rows, and 915 test rows in the saved partition.</p>
+  <div class="gnn-grid"><div class="card"><h3>Saved GNN result</h3><div class="big-metric">0.6908</div><p>held-out MAE</p><div class="metric-row"><span>RMSE <b>0.9093</b></span><span>R² <b>0.3535</b></span><span>Pearson r <b>0.6225</b></span></div></div><div class="card"><h3>Training record</h3><ul><li>Best validation MAE: 0.6507</li><li>Best epoch: 48</li><li>Epochs completed: 68</li><li>Seed: 50</li><li>Device: CPU</li></ul></div></div>
+  <figure><img src="assets/figures/GNN_diagnostics.png" alt="GNN diagnostics"><figcaption>Saved GNN diagnostics figure supplied with the project files.</figcaption></figure>
+  <div class="callout"><b>PiGNN.</b> The repository status marks PiGNN as scientifically dropped. The site therefore does not present a completed PiGNN result.</div>
+</section>
+
+<section id="results">
+  <div class="section-kicker">09 · RESULTS</div><h2>Held-out performance</h2>
+  <p>The table below reproduces the values in <code>output/logs/model_comparison_metrics.csv</code> on the repository's held-out test partition.</p>
+  <div class="table-wrap"><table class="results"><thead><tr><th>Model</th><th>Features</th><th>CV MAE</th><th>Test MAE</th><th>RMSE</th><th>R²</th><th>Pearson r</th><th>Spearman ρ</th></tr></thead><tbody>
+  <tr class="best"><td>XGBoost</td><td>Combined</td><td>0.5974</td><td><b>0.6045</b></td><td>0.7981</td><td>0.5020</td><td>0.7109</td><td>0.6935</td></tr>
+  <tr><td>XGBoost</td><td>Morgan</td><td>0.6042</td><td>0.6231</td><td>0.8240</td><td>0.4691</td><td>0.6905</td><td>0.6765</td></tr>
+  <tr><td>LightGBM</td><td>Combined</td><td>0.6313</td><td>0.6312</td><td>0.8223</td><td>0.4712</td><td>0.6885</td><td>0.6746</td></tr>
+  <tr><td>LightGBM</td><td>Morgan</td><td>0.6347</td><td>0.6530</td><td>0.8560</td><td>0.4271</td><td>0.6625</td><td>0.6558</td></tr>
+  <tr><td>XGBoost</td><td>Descriptors</td><td>0.6993</td><td>0.6613</td><td>0.8568</td><td>0.4259</td><td>0.6533</td><td>0.6291</td></tr>
+  <tr><td>LightGBM</td><td>Descriptors</td><td>0.7141</td><td>0.6780</td><td>0.8775</td><td>0.3979</td><td>0.6340</td><td>0.6082</td></tr>
+  <tr><td>Random Forest</td><td>Combined</td><td>0.6812</td><td>0.6985</td><td>0.8718</td><td>0.4058</td><td>0.6476</td><td>0.6446</td></tr>
+  <tr><td>Random Forest</td><td>Morgan</td><td>0.6854</td><td>0.7053</td><td>0.8840</td><td>0.3889</td><td>0.6325</td><td>0.6372</td></tr>
+  <tr><td>Random Forest</td><td>Descriptors</td><td>0.7202</td><td>0.7186</td><td>0.8983</td><td>0.3690</td><td>0.6155</td><td>0.5949</td></tr>
+  </tbody></table></div>
+  <figure><img src="assets/figures/model_comparison_metrics.png" alt="Model comparison metrics"><figcaption>Model comparison figure supplied with the project files.</figcaption></figure>
+  <h3>Diagnostics</h3>
+  <div class="figure-grid"><figure><img src="assets/figures/XGBoost_combined_diagnostics.png" alt="XGBoost combined diagnostics"><figcaption>XGBoost · combined</figcaption></figure><figure><img src="assets/figures/LightGBM_combined_diagnostics.png" alt="LightGBM combined diagnostics"><figcaption>LightGBM · combined</figcaption></figure><figure><img src="assets/figures/RandomForest_combined_diagnostics.png" alt="Random Forest combined diagnostics"><figcaption>Random Forest · combined</figcaption></figure><figure><img src="assets/figures/statistical_model_diagnostics.png" alt="Statistical model diagnostics"><figcaption>Statistical model diagnostics</figcaption></figure></div>
+  <div class="result-note"><b>Reading the benchmark.</b> Within the saved comparison, XGBoost with the combined representation has the lowest reported test MAE (0.6045) among the listed classical runs. This page does not convert that number into a claim of universal or state-of-the-art performance.</div>
+</section>
+
+<section id="audit">
+  <div class="section-kicker">10 · SCIENTIFIC AUDIT</div><h2>What the forensic audit says</h2>
+  <p>The repository contains an explicit forensic audit of the pipeline and saved dataset. Its overall verdict is <b>“C. NOT YET TRUSTWORTHY.”</b> That conclusion is retained here because it is part of the project evidence.</p>
+  <div class="audit-grid"><div class="audit-item critical"><b>Critical</b><h3>Unit-inconsistent potency threshold</h3><p>The code applies <code>standard_value &lt;= 10000</code> rather than applying the threshold to normalized IC50.</p></div><div class="audit-item high"><b>High</b><h3>Deterministic scaffold allocation</h3><p>The split is size-sorted and greedy; it should be described as such rather than as a random scaffold split.</p></div><div class="audit-item medium"><b>Medium</b><h3>Duplicate aggregation order</h3><p>Median pIC50 is computed before later relation and potency filtering, making target construction cohort-dependent.</p></div><div class="audit-item low"><b>Low</b><h3>Unused random split helper</h3><p>A random split helper exists in the code but is not used in the current reported model path.</p></div></div>
+  <div class="positive"><b>What the audit did verify:</b> the pIC50 formula is mathematically correct; the current scaffold split has zero scaffold and molecule overlap; and Optuna is isolated from the held-out test set through scaffold-grouped CV.</div>
+</section>
+
+<section id="limitations">
+  <div class="section-kicker">11 · LIMITATIONS</div><h2>Interpretation boundaries</h2>
+  <ul class="limits"><li>The benchmark should be interpreted as a scaffold-extrapolation estimate under the implemented deterministic split, not as a generic statement of QSAR generalization.</li><li>The potency threshold should be applied to normalized IC50 for physical unit consistency.</li><li>The exact dataset snapshot and software environment matter for reproducibility.</li><li>The repository audit recommends correcting the thresholding issue before treating the benchmark as a clean, publication-ready estimate.</li></ul>
+</section>
+
+<section id="reproducibility">
+  <div class="section-kicker">12 · REPRODUCIBILITY</div><h2>Artifacts retained with the project</h2>
+  <div class="card-grid three"><div class="card"><b>Code</b><p>Python source under <code>src/</code>.</p></div><div class="card"><b>Outputs</b><p>Metrics, predictions, model files, diagnostics, and audit artifacts under <code>output/</code>.</p></div><div class="card"><b>Seeds</b><p>The audit records explicit seeds for Optuna and the classical models.</p></div></div>
+  <p>The forensic audit describes end-to-end reproducibility as <b>PARTIALLY</b> satisfied because exact reproduction depends on the dataset snapshot and dependency stack.</p>
+</section>
+
+<section id="future">
+  <div class="section-kicker">13 · FUTURE DIRECTION</div><h2>From engineered features toward structured learning</h2>
+  <div class="roadmap"><span>Engineered features</span><i>→</i><span>Classical molecular ML</span><i>→</i><span>Molecular graphs</span><i>→</i><span>GNN</span><i>→</i><span>Scientifically constrained learning</span></div>
+  <p>The README describes a longer-term direction toward connecting molecular structure, biological activity, and mechanistic understanding rather than optimizing predictive performance in isolation. PiGNN is marked as scientifically dropped in the repository status.</p>
+</section>
+
+<section id="references">
+  <div class="section-kicker">14 · REFERENCES & REPOSITORY</div><h2>Project sources</h2>
+  <div class="source-card"><b>Primary project repository</b><p><a href="https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling" target="_blank" rel="noreferrer">TheHashiramaSenju/AcHe-QSAR-modelling ↗</a></p><p>Default branch inspected for this report: <code>senju</code>.</p></div>
+  <div class="source-card"><b>Repository audit</b><p>The page content incorporates the repository's <code>audit_forensic_report.md</code> and <code>audit_forensic_results.json</code>, together with the saved metric files and the supplied diagnostic figures.</p></div>
+  <div class="footer-note">This report is intentionally evidence-bound: claims are limited to information present in the supplied project files and the inspected repository.</div>
+</section>
+<footer><span>AChE QSAR Modelling</span><span>Scientific report · evidence-bound</span></footer>
+</main></div>
+</body></html>
