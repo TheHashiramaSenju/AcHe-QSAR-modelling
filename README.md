@@ -23,7 +23,6 @@
 ![Target](https://img.shields.io/badge/Target-AChE%20%7C%20CHEMBL220-6A4C93?style=for-the-badge)
 ![Task](https://img.shields.io/badge/Task-pIC50%20Regression-1565C0?style=for-the-badge)
 ![GNN](https://img.shields.io/badge/GNN-Completed-D97706?style=for-the-badge)
-![PiGNN](https://img.shields.io/badge/PiGNN-Dropped-B45309?style=for-the-badge)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23182018.svg)](https://doi.org/10.5281/zenodo.23182018)
 <br><br>
 
@@ -75,7 +74,7 @@ The current implementation establishes a classical QSAR/ML benchmark using:
 - Optuna hyperparameter optimization
 - Multi-metric evaluation and residual analysis
 
-The project is subsequently being extended from engineered molecular representations toward **Graph Neural Networks (GNNs)** and **Physics-Informed GNNs (PiGNNs)**.
+The project is subsequently already extended to engineering molecular representations toward **Graph Neural Networks (GNNs)**..
 
 > **Research direction:** move from fixed molecular feature representations toward increasingly structure-aware and scientifically constrained molecular learning.
 
@@ -113,7 +112,7 @@ Predicted pIC50
 | How does structural separation affect performance? | Test molecular generalization |
 | How do classical models compare under the same representation? | Establish reliable baselines |
 | Can graph representations improve molecular learning? | GNN extension |
-| Can scientific constraints be incorporated into graph learning? | PiGNN extension |
+
 
 ---
 
@@ -526,8 +525,6 @@ Atom Features + Bond Features
 | Residual analysis | ✅ |
 | Dataset / validation audit |  ✅ |
 | GNN |  ✅ |
-| PiGNN | Scientifically-Dropped |
-
 ---
 
 ## 🔭 Future Direction
