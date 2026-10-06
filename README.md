@@ -44,18 +44,12 @@
 - [⚙️ Hyperparameter Optimization](#️-hyperparameter-optimization)
 - [📏 Evaluation](#-evaluation)
 - [📊 Experimental Design](#-experimental-design)
-- [Graph Neural Network](#graph-neural-network)
-        - [Molecular Graph](#molecular-graph)
-        - [Message Passing](#message-passing)
-        - [Graph Readout and Prediction](#graph-readout-and-prediction)
-        - [Architecture and Training](#architecture-and-training)
-        - [Matched Results](#matched-results)
-        - [Reproducibility Artifacts](#reproducibility-artifacts)
+- [🔬 Graph Neural Network](#graph-neural-network)
 - [🛠️ Technology Stack](#️-technology-stack)
 - [🚧 Current Status](#-current-status)
 - [🔭 Future Direction](#-future-direction)
 - [📚 Technical Documentation](#-technical-documentation)
-- [📖 Citation](#-citations)
+- [📖 Citation](#-citation)
 - [👤 Author](#-author)
 
 ---
@@ -78,8 +72,7 @@ The current implementation establishes a classical QSAR/ML benchmark using:
 - LightGBM
 - Optuna hyperparameter optimization
 - Multi-metric evaluation and residual analysis
-
-The project is subsequently already extended to engineering molecular representations toward **Graph Neural Networks (GNNs)**..
+- Implemented GNNs
 
 > **Research direction:** move from fixed molecular feature representations toward increasingly structure-aware and scientifically constrained molecular learning.
 
