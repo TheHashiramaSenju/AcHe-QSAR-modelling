@@ -24,7 +24,7 @@
 ![Task](https://img.shields.io/badge/Task-pIC50%20Regression-1565C0?style=for-the-badge)
 ![GNN](https://img.shields.io/badge/GNN-Completed-D97706?style=for-the-badge)
 ![PiGNN](https://img.shields.io/badge/PiGNN-Dropped-B45309?style=for-the-badge)
-
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23182018.svg)](https://doi.org/10.5281/zenodo.23182018)
 <br><br>
 
 
@@ -45,12 +45,14 @@
 - [⚙️ Hyperparameter Optimization](#️-hyperparameter-optimization)
 - [📏 Evaluation](#-evaluation)
 - [📊 Experimental Design](#-experimental-design)
-- [🧠 GNN → PiGNN](#-gnn--pignn)
+- [🧠 Graph Neural Network](#-Graph-Neural-Network)
 - [📈 Architecture](#-Architecture)
 - [🗂️ Repository Structure](#️-repository-structure)
 - [🛠️ Technology Stack](#️-technology-stack)
 - [🚧 Current Status](#-current-status)
 - [🔭 Future Direction](#-future-direction)
+- [📚 Technical Documentation](#-technical-documentation)
+- [📖 Citation](#-citations)
 - [👤 Author](#-author)
 
 ---
@@ -397,52 +399,80 @@ The held-out test partition is reserved for final evaluation rather than hyperpa
 
 ---
 
-## 🧠 GNN → PiGNN
 
-### Graph Neural Network — Ongoing
+## 🧠 Graph Neural Network
 
-The next stage moves beyond fixed fingerprints toward **explicit molecular graph representations**.
+The classical models represent molecules using fixed engineered features such as
+Morgan fingerprints and RDKit descriptors. The GNN stage instead represents each
+molecule explicitly as a **chemical graph**, allowing the model to learn
+structure-dependent representations through message passing.
 
-A molecule is represented as:
+The GNN was evaluated as a separate model family under the same
+**scaffold-held-out test partition** used for the audited classical comparison.
+
+### Molecular Graph
+
+Each molecule is represented as:
 
 $$
 G=(V,E)
 $$
 
-where \(V\) represents atoms and \(E\) represents chemical bonds.
+where:
+
+- $V$ represents atoms
+- $E$ represents chemical bonds
+
+The graph contains **7 atom-level feature channels** and **13 bond-level feature
+channels**.
+
+### Node Features
+
+Each atom is represented using:
+
+| Feature | Description |
+|---|---|
+| Atomic number | Element identity |
+| Degree | Number of directly connected atoms |
+| Formal charge | Charge state |
+| Hybridization | Hybridization state |
+| Aromaticity | Aromatic atom indicator |
+| Hydrogen count | Number of attached hydrogens |
+| Ring membership | Whether the atom belongs to a ring |
+
+### Edge Features
+
+Bond representations contain **13 channels**, including:
+
+- single, double, triple, and aromatic bond types
+- conjugation
+- aromaticity
+- ring membership
+- stereochemical configuration
+
+Each molecular bond is represented in both directions for message passing.
+
+---
+
+### Message Passing
+
+The graph network projects the categorical node and edge representations into a
+shared hidden representation and performs **three message-passing steps**.
+
+Conceptually:
 
 ```text
-Molecular Graph
-      ↓
-Node / Edge Features
-      ↓
-Message Passing
-      ↓
-Graph Representation
-      ↓
-Regression Head
-      ↓
-Predicted pIC50
-```
-
-### Physics-Informed GNN — Ongoing
-
-The subsequent stage investigates **Physics-Informed / scientifically constrained graph learning**.
-
-The objective is to explore whether chemically or physically motivated information can be incorporated into graph-based learning rather than relying exclusively on statistical correlations.
-
-```text
-Classical ML
-     ↓
-GNN
-     ↓
-Physics-Informed GNN
-     ↓
-Structure-aware + scientifically constrained learning
-```
-
-> **GNN and PiGNN development are ongoing and are intentionally not presented as completed results.**
-
+Atom Features + Bond Features
+             ↓
+      Feature Projection
+             ↓
+      Message Passing × 3
+             ↓
+       GRU-based Updates
+             ↓
+     Residual + Normalization
+             ↓
+       Graph Representation
 
 
 ## 📈 Architecture
@@ -561,9 +591,38 @@ rather than optimizing predictive performance in isolation.
 
 ## 📚 Technical Documentation
 
-A separate technical report contains the detailed methodology, data-processing decisions, feature definitions, model configurations, hyperparameter spaces, validation analysis, GNN methodology, PiGNN formulation and experimental results.
+A separate technical report contains the detailed methodology, data-processing decisions, feature definitions, model configurations, hyperparameter spaces, validation analysis, GNN methodology, and experimental results.
+
+The complete research record and archived software release are preserved through Zenodo.
 
 ---
+
+## 📖 Citation
+
+If you use this repository, its methodology, implementation, or derived results in academic or scientific work, please cite the archived software release:
+
+**Venkataramanan, D. (2026).**  
+*AChE Molecular Machine Learning: Structure-Aware Prediction of Acetylcholinesterase Inhibitory Potency.*  
+Zenodo.  
+https://doi.org/10.5281/zenodo.23182018
+
+### BibTeX
+
+```bibtex
+@software{venkataramanan_ache_qsar_2026,
+  author       = {Venkataramanan, Darshan},
+  title        = {AChE Molecular Machine Learning: Structure-Aware Prediction of Acetylcholinesterase Inhibitory Potency},
+  year         = {2026},
+  version      = {1.0.0},
+  publisher    = {Zenodo},
+  doi          = {10.5281/zenodo.23182018},
+  url          = {https://doi.org/10.5281/zenodo.23182018}
+}
+
+```
+
+---
+
 
 ## 👤 Author
 

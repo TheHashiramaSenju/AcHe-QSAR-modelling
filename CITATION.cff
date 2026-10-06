@@ -1,37 +1,46 @@
 cff-version: 1.2.0
 
-message: "If you use this software, methodology, or derived results in academic or scientific work, please cite the specific software release and associated report."
-
-type: software
+message: "If you use this software, methodology, or derived results in academic or scientific work, please cite this software release."
 
 title: "AChE Molecular Machine Learning: Structure-Aware Prediction of Acetylcholinesterase Inhibitory Potency"
 
-version: "1.0.0"
-
-date-released: 2026-10-06
+type: software
 
 authors:
   - family-names: "Venkataramanan"
     given-names: "Darshan"
 
-repository-code: "https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling"
+version: "1.0.0"
 
-url: "https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling"
+date-released: "2026-10-06"
 
 license: "MIT"
 
+doi: "10.5281/zenodo.23182018"
+
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.23182018"
+    description: "Zenodo DOI for the archived research software release"
+
+repository-code: "https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling"
+
+repository-artifact: "https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling/releases/tag/v1.0.0"
+
+url: "https://doi.org/10.5281/zenodo.23182018"
+
 keywords:
-  - acetylcholinesterase
-  - AChE
-  - QSAR
-  - cheminformatics
-  - molecular machine learning
-  - computational chemistry
-  - pIC50
-  - ChEMBL
-  - molecular fingerprints
-  - graph neural networks
-  - drug discovery
+  - "acetylcholinesterase"
+  - "AChE"
+  - "QSAR"
+  - "cheminformatics"
+  - "molecular machine learning"
+  - "computational chemistry"
+  - "pIC50"
+  - "ChEMBL"
+  - "molecular fingerprints"
+  - "graph neural networks"
+  - "drug discovery"
 
 abstract: >
   A structure-aware molecular machine-learning pipeline for continuous
@@ -40,8 +49,6 @@ abstract: >
   IC50 normalization and pIC50 transformation, Morgan fingerprints,
   RDKit molecular descriptors, scaffold-aware evaluation, classical
   ensemble machine learning, hyperparameter optimization, diagnostic
-  analysis, and a graph neural network evaluation. The repository also
-  contains a forensic audit of the data-processing and evaluation pipeline
-  and documents methodological limitations and reproducibility constraints.
-
-repository-artifact: "https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling/releases/tag/v1.0.0"
+  analysis, and graph neural network evaluation. The repository also
+  contains reproducibility and forensic audit artifacts documenting
+  methodological decisions, validation design, and identified limitations.
