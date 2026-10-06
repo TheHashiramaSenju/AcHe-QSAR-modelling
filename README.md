@@ -23,7 +23,7 @@
 ![Target](https://img.shields.io/badge/Target-AChE%20%7C%20CHEMBL220-6A4C93?style=for-the-badge)
 ![Task](https://img.shields.io/badge/Task-pIC50%20Regression-1565C0?style=for-the-badge)
 ![GNN](https://img.shields.io/badge/GNN-Completed-D97706?style=for-the-badge)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23182018.svg)](https://doi.org/10.5281/zenodo.23182018)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23191332.svg)](https://doi.org/10.5281/zenodo.23191332)
 <br><br>
 
 
@@ -568,7 +568,7 @@ If you use this repository, its methodology, implementation, or derived results 
 **Venkataramanan, D. (2026).**  
 *AChE Molecular Machine Learning: Structure-Aware Prediction of Acetylcholinesterase Inhibitory Potency.*  
 Zenodo.  
-https://doi.org/10.5281/zenodo.23182018
+https://doi.org/10.5281/zenodo.23191332
 
 ### BibTeX
 
@@ -579,8 +579,8 @@ https://doi.org/10.5281/zenodo.23182018
   year         = {2026},
   version      = {1.0.0},
   publisher    = {Zenodo},
-  doi          = {10.5281/zenodo.23182018},
-  url          = {https://doi.org/10.5281/zenodo.23182018}
+  doi          = {10.5281/zenodo.23191332},
+  url          = {https://doi.org/10.5281/zenodo.23191332}
 }
 
 ```

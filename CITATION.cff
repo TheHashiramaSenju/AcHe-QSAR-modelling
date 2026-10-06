@@ -10,24 +10,24 @@ authors:
   - family-names: "Venkataramanan"
     given-names: "Darshan"
 
-version: "1.0.0"
+version: "1.0.1"
 
 date-released: "2026-10-06"
 
 license: "MIT"
 
-doi: "10.5281/zenodo.23182018"
+doi: "10.5281/zenodo.23191332"
 
 identifiers:
   - type: doi
-    value: "10.5281/zenodo.23182018"
+    value: "10.5281/zenodo.23191332"
     description: "Zenodo DOI for the archived research software release"
 
 repository-code: "https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling"
 
-repository-artifact: "https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling/releases/tag/v1.0.0"
+repository-artifact: "https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling/releases/tag/v1.0.1"
 
-url: "https://doi.org/10.5281/zenodo.23182018"
+url: "https://doi.org/10.5281/zenodo.23191332"
 
 keywords:
   - "acetylcholinesterase"
