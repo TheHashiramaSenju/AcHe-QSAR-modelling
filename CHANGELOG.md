@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented here.
 
+## [1.0.1] — 2026-10-06
+
+### Documentation and research-record update
+
+This release updates the documented research record following the initial
+v1.0.0 release.
+
+### Updated
+
+- Expanded the Graph Neural Network methodology and evaluation documentation
+- Clarified the distinction between the original classical benchmark and the
+  matched classical-vs-GNN audit
+- Updated benchmark and GNN result reporting
+- Clarified PiGNN as a future research direction rather than a completed model
+- Updated repository provenance and citation metadata
+- Corrected GitHub Pages documentation and figure references
+
+### Archival DOI
+
+**DOI:** https://doi.org/10.5281/zenodo.23191332
+
+---
+
 ## [1.0.0] — 2026-10-06
 
 ### Initial documented research release

@@ -22,6 +22,11 @@ The release includes the documented implementation, experimental outputs,
 diagnostic analyses, audit artifacts, and scientific report available in the
 repository at the time of release.
 
+The `v1.0.1` release represents the current documented repository state and
+contains subsequent documentation, provenance, and research-record updates.
+The `v1.0.0` record remains preserved as the original archived research
+snapshot.
+
 ## Scope of the documented work
 
 The research workflow includes:
