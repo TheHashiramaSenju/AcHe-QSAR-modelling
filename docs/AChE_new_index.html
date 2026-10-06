@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AChE Molecular Machine Learning — Structure → Potency</title>
+<meta name="description" content="An evidence-grounded computational study of acetylcholinesterase inhibitory potency prediction from molecular structure.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+ --ink:#080b0d; --paper:#f3f0e8; --paper2:#e9e5db; --white:#faf9f4;
+ --muted:#697077; --rule:#c8c4b9; --green:#83d6b3; --green2:#b6edd8;
+ --blue:#9dbcf2; --red:#e49b8f; --yellow:#e4c77e;
+ --serif:"Space Grotesk",sans-serif; --sans:"IBM Plex Sans",sans-serif; --mono:"DM Mono",monospace;
+ --max:1320px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;background:var(--ink)}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.65}
+a{color:inherit}
+::selection{background:var(--green);color:var(--ink)}
+img{max-width:100%;display:block}
+.wrap{width:min(var(--max),calc(100% - 48px));margin:auto}
+.mono{font-family:var(--mono);font-size:.78em;letter-spacing:.01em}
+.display{font-family:var(--serif);letter-spacing:-.065em}
+.topbar{position:sticky;top:0;z-index:100;background:rgba(8,11,13,.95);color:#fff;border-bottom:1px solid #262b2f}
+.topbar .inner{height:62px;display:flex;align-items:center;justify-content:space-between;gap:25px}
+.logo{font-family:var(--serif);font-weight:700;font-size:16px;text-decoration:none}
+.logo em{font-style:normal;color:var(--green)}
+.nav{display:flex;gap:2px;overflow:auto;white-space:nowrap}
+.nav a{font-family:var(--mono);font-size:10px;color:#aeb6bc;text-decoration:none;padding:8px 10px}
+.nav a:hover{color:#fff}
+.hero{background:var(--ink);color:#f8f7f1;padding:54px 0 0;overflow:hidden}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(350px,.88fr);gap:50px;align-items:end}
+.eyebrow{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--green);margin-bottom:18px}
+.hero h1{font-family:var(--serif);font-size:clamp(58px,8.2vw,124px);line-height:.87;margin:0 0 28px;max-width:920px;font-weight:600}
+.hero .dek{font-size:19px;line-height:1.5;color:#c4c9cc;max-width:720px}
+.hero-side{border-left:1px solid #30363a;padding:18px 0 12px 30px}
+.hero-side .big{font-family:var(--serif);font-size:62px;line-height:1;font-weight:600;color:var(--green)}
+.hero-side p{color:#aeb6bc;margin:8px 0 22px}
+.ctas{display:flex;flex-wrap:wrap;gap:10px;margin-top:30px}
+.cta{display:inline-flex;align-items:center;gap:8px;padding:11px 15px;border:1px solid #41484d;text-decoration:none;font-family:var(--mono);font-size:11px}
+.cta.primary{background:var(--green);border-color:var(--green);color:var(--ink)}
+.hero-art{margin-top:54px;border-top:1px solid #30363a}
+.hero-art img{width:100%;height:440px;object-fit:cover;object-position:center}
+.ticker{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid #30363a;margin-top:1px}
+.tick{padding:17px 18px;border-right:1px solid #30363a}
+.tick:last-child{border-right:0}
+.tick strong{font-family:var(--serif);font-size:25px;font-weight:600;display:block}
+.tick span{font-family:var(--mono);font-size:9px;text-transform:uppercase;color:#879097;letter-spacing:.08em}
+section{border-bottom:1px solid var(--rule);padding:100px 0}
+.chapter{display:grid;grid-template-columns:190px minmax(0,1fr);gap:45px}
+.chno{font-family:var(--mono);font-size:11px;color:#6b7379;text-transform:uppercase;letter-spacing:.1em;padding-top:8px}
+.chno strong{display:block;font-family:var(--serif);font-size:48px;line-height:1;color:var(--ink);margin-bottom:8px}
+.chbody{min-width:0}
+.chbody h2{font-family:var(--serif);font-weight:600;font-size:clamp(36px,5vw,67px);line-height:.98;letter-spacing:-.055em;margin:0 0 22px;max-width:980px}
+.chbody .intro{font-size:20px;line-height:1.55;max-width:860px;color:#363d42}
+.ruleline{height:1px;background:var(--rule);margin:35px 0}
+.lede{font-size:20px;max-width:850px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:35px}
+.three{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.cell{background:var(--paper);padding:27px}
+.cell h3{font-family:var(--serif);font-size:22px;line-height:1.05;margin:0 0 11px}
+.cell p{margin:0;color:#50575d}
+.darkband{background:var(--ink);color:#f4f2eb;margin:55px calc((1320px - 100vw)/2);padding:65px max(24px,calc((100vw - 1320px)/2))}
+.darkband .inner{width:min(1320px,100%);margin:auto}
+.darkband h3{font-family:var(--serif);font-size:42px;line-height:1;margin:0 0 16px;letter-spacing:-.045em}
+.darkband p{color:#b9c0c5;max-width:780px}
+.factline{display:flex;flex-wrap:wrap;gap:0;margin-top:28px;border-top:1px solid #343b3f}
+.fact{padding:15px 28px 15px 0;margin-right:28px;border-right:1px solid #343b3f}
+.fact strong{font-family:var(--serif);font-size:28px;display:block;color:var(--green)}
+.fact span{font-family:var(--mono);font-size:9px;color:#7f898f;text-transform:uppercase}
+.bio-figure{background:#101417;color:#eee;padding:30px;margin-top:35px}
+.bio-figure .equation{font-family:var(--serif);font-size:clamp(28px,4vw,54px);letter-spacing:-.04em;text-align:center;padding:38px 10px}
+.bio-figure .equation span{color:var(--green)}
+.bio-caption{font-family:var(--mono);font-size:10px;color:#8d989e;border-top:1px solid #30363a;padding-top:12px}
+.source{font-family:var(--mono);font-size:10px;color:#6b7379;margin-top:14px}
+.source a{text-decoration:underline}
+.timeline{display:flex;gap:1px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:18px;background:var(--rule);border:1px solid var(--rule)}
+.titem{background:var(--paper);min-width:285px;max-width:285px;min-height:245px;padding:24px;scroll-snap-align:start;position:relative}
+.titem .n{font-family:var(--mono);font-size:10px;color:#6d7479}
+.titem h3{font-family:var(--serif);font-size:23px;line-height:1.03;margin:28px 0 10px}
+.titem p{font-size:14px;color:#565e63;margin:0}
+.titem .count{font-family:var(--mono);font-size:11px;color:#111;margin-top:18px}
+.scrollhint{font-family:var(--mono);font-size:10px;color:#70777b;margin:9px 0 0}
+.funnel{display:grid;grid-template-columns:1.2fr .8fr;gap:35px;align-items:start}
+.funnel-bars{border-left:1px solid var(--rule)}
+.frow{display:grid;grid-template-columns:150px 1fr 80px;align-items:center;gap:13px;margin:8px 0}
+.frow label{font-family:var(--mono);font-size:10px;color:#636a6f}
+.fbar{height:12px;background:#d9d5cb}
+.fbar i{display:block;height:100%;background:var(--ink)}
+.frow b{font-family:var(--mono);font-size:10px;font-weight:400}
+.figure{border:1px solid #c5c1b6;background:#eeeae1}
+.figure img{width:100%;height:auto}
+.figcap{padding:10px 13px;border-top:1px solid #c5c1b6;font-family:var(--mono);font-size:9px;color:#666e73}
+.gallery{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.gallery .figure.large{grid-column:1/-1}
+.representations{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.rep{background:var(--ink);color:#eee;padding:30px;min-height:330px;position:relative}
+.rep .num{font-family:var(--mono);font-size:10px;color:var(--green)}
+.rep .size{font-family:var(--serif);font-size:68px;line-height:.9;letter-spacing:-.06em;margin:45px 0 13px;color:#fff}
+.rep h3{font-family:var(--serif);font-size:26px;margin:0 0 10px}
+.rep p{font-size:14px;color:#aeb6ba}
+.rep .micro{position:absolute;bottom:25px;left:30px;font-family:var(--mono);font-size:9px;color:#788287}
+.split-visual{display:grid;grid-template-columns:.78fr 1.22fr;gap:18px;align-items:stretch}
+.statstrip{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.stat{background:var(--paper);padding:25px}
+.stat strong{font-family:var(--serif);font-size:42px;line-height:1;display:block}
+.stat span{font-family:var(--mono);font-size:9px;text-transform:uppercase;color:#697177}
+.callout{border-left:4px solid var(--ink);padding:20px 23px;background:#e6e2d8;margin-top:22px}
+.callout.warn{border-color:#a47a25;background:#eee4c9}
+.callout.green{border-color:#28785f;background:#dceee6}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:12px 11px;border-bottom:1px solid var(--rule);text-align:left}
+th{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#676e73}
+td:first-child{font-weight:600}
+.best{background:#dceee6}
+.score{font-family:var(--serif);font-size:42px;letter-spacing:-.05em}
+.scoregrid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule);margin-top:25px}
+.scorecell{background:var(--paper);padding:25px}
+.scorecell .label{font-family:var(--mono);font-size:9px;color:#6a7277;text-transform:uppercase}
+.scorecell p{margin:8px 0 0;font-size:13px;color:#50575b}
+.architecture{background:var(--ink);color:#eee;padding:30px;margin-top:30px}
+.archrow{display:grid;grid-template-columns:1fr 25px 1fr 25px 1fr 25px 1fr;gap:8px;align-items:center}
+.archnode{border:1px solid #343b3f;padding:20px 13px;text-align:center;min-height:100px;display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-size:17px}
+.archarrow{color:var(--green);font-family:var(--mono);text-align:center}
+.auditgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.audit{background:#eee9de;padding:25px}
+.audit .status{font-family:var(--mono);font-size:9px;text-transform:uppercase;color:#7b4c43}
+.audit h3{font-family:var(--serif);font-size:24px;line-height:1.05;margin:15px 0 9px}
+.audit p{font-size:14px;color:#555d62;margin:0}
+.limitlist{border-top:1px solid var(--rule)}
+.limit{display:grid;grid-template-columns:42px 220px 1fr;gap:20px;padding:20px 0;border-bottom:1px solid var(--rule)}
+.limit .num{font-family:var(--mono);font-size:10px;color:#737a7e}
+.limit b{font-family:var(--serif);font-size:19px}
+.limit span{color:#565e62}
+.roadmap{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.road{background:var(--ink);color:#eee;padding:28px;min-height:220px}
+.road .phase{font-family:var(--mono);font-size:9px;color:var(--green);text-transform:uppercase}
+.road h3{font-family:var(--serif);font-size:27px;line-height:1;margin:30px 0 10px}
+.road p{font-size:13px;color:#aab3b8}
+.repo-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.repo{background:var(--paper);padding:23px;text-decoration:none;min-height:150px}
+.repo .rno{font-family:var(--mono);font-size:9px;color:#6e757a}
+.repo h3{font-family:var(--serif);font-size:21px;margin:20px 0 6px}
+.repo p{font-size:12px;color:#596166;margin:0}
+footer{background:var(--ink);color:#9ca6ab;padding:50px 0}
+footer .footergrid{display:grid;grid-template-columns:2fr 1fr 1fr;gap:35px}
+footer h3{font-family:var(--serif);font-size:24px;color:#fff;margin:0 0 12px}
+footer a{color:#bfc7cb;text-decoration:none}
+footer p{font-size:12px}
+@media(max-width:1000px){
+ .hero-grid,.two,.funnel,.split-visual{grid-template-columns:1fr}
+ .chapter{grid-template-columns:90px 1fr;gap:25px}
+ .ticker{grid-template-columns:repeat(3,1fr)}
+ .representations,.roadmap{grid-template-columns:1fr}
+ .repo-grid{grid-template-columns:repeat(2,1fr)}
+ .archrow{grid-template-columns:1fr}
+ .archarrow{transform:rotate(90deg)}
+ .darkband{margin-left:-24px;margin-right:-24px}
+}
+@media(max-width:700px){
+ .wrap{width:min(var(--max),calc(100% - 28px))}
+ .nav{display:none}
+ .hero h1{font-size:56px}
+ .hero-side{border-left:0;border-top:1px solid #30363a;padding:25px 0}
+ .hero-art img{height:270px}
+ .ticker{grid-template-columns:1fr 1fr}
+ section{padding:70px 0}
+ .chapter{grid-template-columns:1fr;gap:8px}
+ .chno strong{font-size:34px;display:inline;margin-right:8px}
+ .three,.gallery,.auditgrid,.scoregrid,.repo-grid{grid-template-columns:1fr}
+ .limit{grid-template-columns:35px 1fr}
+ .limit span{grid-column:2}
+ .darkband{padding-left:24px;padding-right:24px}
+ .frow{grid-template-columns:105px 1fr 60px}
+ footer .footergrid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+ <div class="wrap inner">
+  <a class="logo" href="#top">AChE <em>/</em> ML</a>
+  <nav class="nav">
+   <a href="#biology">BIOLOGY</a><a href="#dataset">DATA</a><a href="#curation">CURATION</a>
+   <a href="#representation">REPRESENTATION</a><a href="#validation">VALIDATION</a>
+   <a href="#models">MODELS</a><a href="#gnn">GNN</a><a href="#results">RESULTS</a>
+   <a href="#audit">AUDIT</a><a href="#repro">REPRO</a><a href="#future">FUTURE</a>
+  </nav>
+ </div>
+</header>
+
+<main id="top">
+
+<section class="hero">
+ <div class="wrap">
+  <div class="hero-grid">
+   <div>
+    <div class="eyebrow">Independent computational study · CHEMBL220 · October 2026</div>
+    <h1 class="display">Structure →<br>potency.</h1>
+    <p class="dek">AChE molecular machine learning built around a simple question: how much of acetylcholinesterase inhibitory potency can be recovered from molecular structure — and what changes when the representation, model, and chemical validation strategy change?</p>
+    <div class="ctas">
+     <a class="cta primary" href="https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling/blob/senju/REPORT.pdf" target="_blank">READ THE SCIENTIFIC REPORT ↗</a>
+     <a class="cta" href="https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling/tree/senju" target="_blank">GITHUB REPOSITORY ↗</a>
+    </div>
+   </div>
+   <aside class="hero-side">
+    <div class="mono">THE DATASET</div>
+    <div class="big">4,571</div>
+    <p>unique molecular identities after the current curation pipeline, from 8,793 raw AChE activity records.</p>
+    <div class="mono">THE BEST SAVED CLASSICAL RESULT</div>
+    <div class="big">0.6045</div>
+    <p>pIC50 MAE for XGBoost + Morgan + RDKit descriptors on the original scaffold-held-out test partition.</p>
+   </aside>
+  </div>
+  <div class="hero-art"><img src="archbannertop.png" alt="AChE project architecture"></div>
+  <div class="ticker">
+   <div class="tick"><strong>CHEMBL220</strong><span>target</span></div>
+   <div class="tick"><strong>IC50 → pIC50</strong><span>endpoint</span></div>
+   <div class="tick"><strong>1,038</strong><span>combined features</span></div>
+   <div class="tick"><strong>915</strong><span>held-out test molecules</span></div>
+   <div class="tick"><strong>0</strong><span>scaffold overlap</span></div>
+  </div>
+ </div>
+</section>
+
+<section id="biology">
+ <div class="wrap chapter">
+  <div class="chno"><strong>01</strong>Biology</div>
+  <div class="chbody">
+   <h2 class="display">Start with the enzyme, not the algorithm.</h2>
+   <p class="intro">Acetylcholinesterase is a serine hydrolase responsible for the rapid hydrolysis of acetylcholine. Its catalytic activity regulates the lifetime of acetylcholine in cholinergic signalling, making AChE an established molecular target for modulation of cholinergic signalling.</p>
+   <div class="bio-figure">
+    <div class="equation">acetylcholine <span>— AChE →</span> choline + acetate</div>
+    <div class="bio-caption">Biological context used by the study: the computational target is quantitative AChE inhibitory potency, not therapeutic efficacy.</div>
+   </div>
+   <div class="two" style="margin-top:35px">
+    <div>
+     <h3 class="display" style="font-size:28px">The QSAR problem</h3>
+     <p>Medicinal-chemistry collections contain molecules with experimentally measured activities. QSAR modelling asks whether information encoded by molecular structure can explain or predict variation in those measurements.</p>
+    </div>
+    <div>
+     <h3 class="display" style="font-size:28px">The boundary</h3>
+     <p>This project predicts a curated AChE potency label. It does <b>not</b> establish cellular efficacy, pharmacokinetics, toxicity, selectivity, blood–brain-barrier penetration, or clinical benefit.</p>
+    </div>
+   </div>
+   <div class="source">External target resources:
+    <a href="https://www.uniprot.org/uniprotkb/P22303/entry" target="_blank">UniProt ACHE_HUMAN</a> ·
+    <a href="https://www.ebi.ac.uk/chembl/" target="_blank">ChEMBL</a>
+   </div>
+  </div>
+ </div>
+</section>
+
+<section id="dataset">
+ <div class="wrap chapter">
+  <div class="chno"><strong>02</strong>Dataset</div>
+  <div class="chbody">
+   <h2 class="display">8,793 observations. One target. Many experimental origins.</h2>
+   <p class="intro">The raw data are literature-derived ChEMBL activity records associated with human acetylcholinesterase, CHEMBL220. The dataset should therefore be understood as an aggregation of measurements across assays and sources, not as one homogeneous experiment.</p>
+   <div class="three" style="margin-top:35px">
+    <div class="cell"><h3>8,793</h3><p>Raw activity records in the retrieved snapshot.</p></div>
+    <div class="cell"><h3>7,179</h3><p>Unique molecule ChEMBL identifiers before the full curation sequence.</p></div>
+    <div class="cell"><h3>1,020</h3><p>Unique assay ChEMBL identifiers in the raw snapshot.</p></div>
+   </div>
+   <div class="darkband">
+    <div class="inner">
+     <h3>Why curation is part of the model.</h3>
+     <p>Changing units, molecular identity, duplicate handling, relation qualifiers, or potency cutoffs changes the target distribution the learner sees. The cohort is therefore treated as a scientific object that must be traceable.</p>
+     <div class="factline">
+      <div class="fact"><strong>98.97%</strong><span>raw rows in nM</span></div>
+      <div class="fact"><strong>500 nM</strong><span>median final IC50</span></div>
+      <div class="fact"><strong>6.3010</strong><span>median final pIC50</span></div>
+      <div class="fact"><strong>10,000 nM</strong><span>upper activity threshold</span></div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</section>
+
+<section id="curation">
+ <div class="wrap chapter">
+  <div class="chno"><strong>03</strong>Curation</div>
+  <div class="chbody">
+   <h2 class="display">Every discarded row has a reason.</h2>
+   <p class="intro">Scroll horizontally through the actual curation sequence. The endpoint is not simply “the cleaned dataset”; it is a documented chain of transformations.</p>
+   <div class="timeline" style="margin-top:35px">
+    <article class="titem"><div class="n">01 / RETRIEVAL</div><h3>Raw ChEMBL</h3><p>Target-selected IC50 records for CHEMBL220.</p><div class="count">8,793 rows</div></article>
+    <article class="titem"><div class="n">02 / VALIDITY</div><h3>Validity + null handling</h3><p>Initial validity and required-field filtering.</p><div class="count">8,793 → 8,072</div></article>
+    <article class="titem"><div class="n">03 / STRUCTURE</div><h3>Salt removal</h3><p>Canonicalized molecular structure after salt/fragment processing.</p><div class="count">8,072 → 8,072</div></article>
+    <article class="titem"><div class="n">04 / IDENTITY</div><h3>InChIKey</h3><p>Structure identity generated for grouping and duplicate handling.</p><div class="count">8,072 → 8,072</div></article>
+    <article class="titem"><div class="n">05 / DUPLICATES</div><h3>Potential duplicates</h3><p>Potential duplicate records removed before unit processing.</p><div class="count">8,072 → 7,248</div></article>
+    <article class="titem"><div class="n">06 / UNITS</div><h3>Unit support</h3><p>Unsupported activity units excluded.</p><div class="count">7,248 → 7,185</div></article>
+    <article class="titem"><div class="n">07 / NORMALIZE</div><h3>IC50 normalization</h3><p>Supported values mapped to a common nM scale.</p><div class="count">7,185 → 7,185</div></article>
+    <article class="titem"><div class="n">08 / TARGET</div><h3>pIC50</h3><p>IC50 values transformed to the logarithmic potency scale.</p><div class="count">7,185 → 7,185</div></article>
+    <article class="titem"><div class="n">09 / REPLICATES</div><h3>MAD filter</h3><p>Within-group robust outlier handling for replicate measurements.</p><div class="count">7,185 → 7,110</div></article>
+    <article class="titem"><div class="n">10 / EXACT DUPLICATES</div><h3>Exact duplicate removal</h3><p>Remaining exact duplicates removed.</p><div class="count">7,110 → 6,387</div></article>
+    <article class="titem"><div class="n">11 / RELATION</div><h3>“=” only</h3><p>Non-equality relation qualifiers excluded from the quantitative regression cohort.</p><div class="count">6,387 → 5,695</div></article>
+    <article class="titem"><div class="n">12 / CUTOFF</div><h3>Potency threshold</h3><p>Final cohort restricted to positive IC50 ≤ 10,000 nM.</p><div class="count"><b>5,695 → 4,571</b></div></article>
+   </div>
+   <div class="scrollhint">↔ drag / shift-scroll to inspect the full curation chain</div>
+   <div class="funnel" style="margin-top:38px">
+    <div>
+     <h3 class="display" style="font-size:32px">The attrition, at a glance.</h3>
+     <div class="funnel-bars">
+      <div class="frow"><label>RAW</label><div class="fbar"><i style="width:100%"></i></div><b>8,793</b></div>
+      <div class="frow"><label>VALID</label><div class="fbar"><i style="width:91.8%"></i></div><b>8,072</b></div>
+      <div class="frow"><label>DUPLICATES</label><div class="fbar"><i style="width:82.4%"></i></div><b>7,248</b></div>
+      <div class="frow"><label>UNITS</label><div class="fbar"><i style="width:81.7%"></i></div><b>7,185</b></div>
+      <div class="frow"><label>MAD</label><div class="fbar"><i style="width:80.9%"></i></div><b>7,110</b></div>
+      <div class="frow"><label>EXACT DUP.</label><div class="fbar"><i style="width:72.6%"></i></div><b>6,387</b></div>
+      <div class="frow"><label>RELATION</label><div class="fbar"><i style="width:64.8%"></i></div><b>5,695</b></div>
+      <div class="frow"><label>FINAL</label><div class="fbar"><i style="width:52%"></i></div><b>4,571</b></div>
+     </div>
+    </div>
+    <div class="cell" style="border:1px solid var(--rule)">
+     <h3>Final potency range</h3>
+     <p><span class="mono">pIC50</span> spans 4.9208–10.9606, with median 6.3010 and SD 1.1267.</p>
+     <div class="callout green"><b>Audit result:</b> the current code uses normalized <span class="mono">IC50_nM</span> for the 10,000 nM threshold. The forensic comparison found zero differently classified rows versus the raw-value expression in this saved snapshot.</div>
+    </div>
+   </div>
+  </div>
+ </div>
+</section>
+
+<section id="representation">
+ <div class="wrap chapter">
+  <div class="chno"><strong>04</strong>Representation</div>
+  <div class="chbody">
+   <h2 class="display">The same molecule, three ways to tell a model what matters.</h2>
+   <p class="intro">Representation is not an implementation detail. It determines what structural information is even available to the learner.</p>
+   <div class="representations" style="margin-top:35px">
+    <div class="rep"><div class="num">REPRESENTATION A</div><div class="size">1024</div><h3>Morgan</h3><p>Radius-2 circular fingerprints expose local atom environments and recurring substructure patterns.</p><div class="micro">hashed binary vector · 4092 unique fingerprints</div></div>
+    <div class="rep"><div class="num">REPRESENTATION B</div><div class="size">14</div><h3>RDKit descriptors</h3><p>Global structural proxies: molecular weight, logP, HBD/HBA, TPSA, charge, rings, rotatable bonds and related quantities.</p><div class="micro">continuous / scalar molecular properties</div></div>
+    <div class="rep"><div class="num">REPRESENTATION C</div><div class="size">1038</div><h3>Combined</h3><p>Local substructure information and global physicochemical information are concatenated into one classical feature space.</p><div class="micro">1024 Morgan + 14 descriptors</div></div>
+   </div>
+   <div class="two" style="margin-top:35px">
+    <div><h3 class="display" style="font-size:30px">What Morgan gives you</h3><p>Local circular environments can be highly useful for analogue-series learning. The trade-off is that the 1,024-bit hash is not a complete molecular description and can collide distinct environments.</p></div>
+    <div><h3 class="display" style="font-size:30px">What descriptors add</h3><p>Descriptors expose global quantities that are not directly represented by a binary substructure fingerprint. They are structural proxies, not direct measurements of binding affinity.</p></div>
+   </div>
+  </div>
+ </div>
+</section>
+
+<section id="validation">
+ <div class="wrap chapter">
+  <div class="chno"><strong>05</strong>Validation</div>
+  <div class="chbody">
+   <h2 class="display">The test set was separated by chemistry, not just by row number.</h2>
+   <p class="intro">Bemis–Murcko scaffolds were used to keep scaffold groups together. The saved partition contains 3,656 training molecules and 915 held-out test molecules, with zero scaffold overlap.</p>
+   <div class="split-visual" style="margin-top:35px">
+    <div class="statstrip">
+     <div class="stat"><strong>3,656</strong><span>training molecules</span></div>
+     <div class="stat"><strong>915</strong><span>test molecules</span></div>
+     <div class="stat"><strong>1,191</strong><span>train scaffolds</span></div>
+     <div class="stat"><strong>915</strong><span>test scaffolds</span></div>
+    </div>
+    <div class="figure"><img src="splits.png" alt="Scaffold train-test split"><div class="figcap">Scaffold allocation saved with the project.</div></div>
+   </div>
+   <div class="callout warn"><b>Important:</b> the implementation sorts scaffolds by descending group size and fills the training partition first. The resulting test set is dominated by singleton scaffolds. This prevents scaffold overlap, but it is not a balanced or random scaffold sample. Conclusions must remain tied to this held-out partition.</div>
+  </div>
+ </div>
+</section>
+
+<section id="models">
+ <div class="wrap chapter">
+  <div class="chno"><strong>06</strong>Models</div>
+  <div class="chbody">
+   <h2 class="display">Three ensemble families. Nine classical experiments.</h2>
+   <p class="intro">Random Forest, XGBoost and LightGBM were each tested with Morgan, descriptors and combined features. Hyperparameters were selected with the saved Optuna workflow under scaffold-grouped validation.</p>
+   <div style="overflow:auto;border-top:1px solid var(--rule);margin-top:35px">
+    <table>
+     <thead><tr><th>Model</th><th>Representation</th><th>Test MAE</th><th>RMSE</th><th>R²</th><th>Pearson</th><th>Spearman</th><th>CV MAE</th></tr></thead>
+     <tbody>
+      <tr><td>Random Forest</td><td>Morgan</td><td>0.7053</td><td>0.8840</td><td>0.3889</td><td>0.6325</td><td>0.6372</td><td>0.6854</td></tr>
+      <tr><td>Random Forest</td><td>Descriptors</td><td>0.7186</td><td>0.8983</td><td>0.3690</td><td>0.6155</td><td>0.5949</td><td>0.7202</td></tr>
+      <tr><td>Random Forest</td><td>Combined</td><td>0.6985</td><td>0.8718</td><td>0.4058</td><td>0.6476</td><td>0.6446</td><td>0.6812</td></tr>
+      <tr><td>XGBoost</td><td>Morgan</td><td>0.6231</td><td>0.8240</td><td>0.4691</td><td>0.6905</td><td>0.6765</td><td>0.6042</td></tr>
+      <tr><td>XGBoost</td><td>Descriptors</td><td>0.6613</td><td>0.8568</td><td>0.4259</td><td>0.6533</td><td>0.6291</td><td>0.6993</td></tr>
+      <tr class="best"><td>XGBoost</td><td>Combined</td><td><b>0.6045</b></td><td><b>0.7981</b></td><td><b>0.5020</b></td><td><b>0.7109</b></td><td><b>0.6935</b></td><td><b>0.5974</b></td></tr>
+      <tr><td>LightGBM</td><td>Morgan</td><td>0.6530</td><td>0.8560</td><td>0.4271</td><td>0.6625</td><td>0.6558</td><td>0.6347</td></tr>
+      <tr><td>LightGBM</td><td>Descriptors</td><td>0.6780</td><td>0.8775</td><td>0.3979</td><td>0.6340</td><td>0.6082</td><td>0.7141</td></tr>
+      <tr><td>LightGBM</td><td>Combined</td><td>0.6312</td><td>0.8223</td><td>0.4712</td><td>0.6885</td><td>0.6746</td><td>0.6313</td></tr>
+     </tbody>
+    </table>
+   </div>
+   <div class="scoregrid">
+    <div class="scorecell"><div class="label">Best combined · XGBoost</div><div class="score">0.6045</div><p>MAE in pIC50 on the original held-out test partition.</p></div>
+    <div class="scorecell"><div class="label">Combined · LightGBM</div><div class="score">0.6312</div><p>Second strongest combined-feature classical result.</p></div>
+    <div class="scorecell"><div class="label">Combined · Random Forest</div><div class="score">0.6985</div><p>Third combined-feature classical result.</p></div>
+   </div>
+   <div class="gallery" style="margin-top:35px">
+    <div class="figure large"><img src="assets/figures/model_comparison_metrics.png" alt="Model comparison metrics"><div class="figcap">Model comparison across the original saved classical experiments.</div></div>
+    <div class="figure"><img src="assets/figures/XGBoost_combined_diagnostics.png" alt="XGBoost combined diagnostics"><div class="figcap">XGBoost · combined representation.</div></div>
+    <div class="figure"><img src="assets/figures/RandomForest_combined_diagnostics.png" alt="Random Forest combined diagnostics"><div class="figcap">Random Forest · combined representation.</div></div>
+   </div>
+  </div>
+ </div>
+</section>
+
+<section id="gnn" style="background:#e7e3d9">
+ <div class="wrap chapter">
+  <div class="chno"><strong>07</strong>Graph ML</div>
+  <div class="chbody">
+   <h2 class="display">Then the molecule stops being a bit-vector.</h2>
+   <p class="intro">The GNN stage represents the molecule explicitly as a graph. Seven categorical atom features and thirteen edge channels are processed through three message-passing steps, then combined with the same 14 global descriptors used by the classical descriptor experiments.</p>
+   <div class="architecture">
+    <div class="archrow">
+     <div class="archnode">7 atom features<br><span class="mono">embeddings</span></div><div class="archarrow">→</div>
+     <div class="archnode">128 hidden<br><span class="mono">projection</span></div><div class="archarrow">→</div>
+     <div class="archnode">3 × message passing<br><span class="mono">GRU · residual · norm</span></div><div class="archarrow">→</div>
+     <div class="archnode">mean + max pooling<br><span class="mono">+ 14 descriptors → MLP</span></div>
+    </div>
+   </div>
+   <div class="three" style="margin-top:30px">
+    <div class="cell"><h3>Nodes</h3><p>Atomic number, degree, formal charge, hybridization, aromaticity, hydrogen count and ring membership.</p></div>
+    <div class="cell"><h3>Edges</h3><p>13 channels covering bond type, conjugation, aromaticity, ring membership and stereochemical indicators, with directed message edges.</p></div>
+    <div class="cell"><h3>Training</h3><p>AdamW · 0.001 learning rate · 0.0001 weight decay · Smooth L1 · clipping 5 · early stopping patience 20 · seed 50.</p></div>
+   </div>
+   <div class="two" style="margin-top:35px">
+    <div class="figure"><img src="assets/figures/GNN_diagnostics.png" alt="GNN diagnostics"><div class="figcap">Saved GNN diagnostics.</div></div>
+    <div>
+     <h3 class="display" style="font-size:34px">0.6908 pIC50 MAE</h3>
+     <p>The saved GNN reached RMSE 0.9093, R² 0.3535 and Pearson r 0.6225 on the scaffold-held-out test partition. Best validation MAE was 0.6507 at epoch 48; training stopped at epoch 68.</p>
+     <div class="callout"><b>Terminology matters:</b> this is a <b>graph-plus-descriptor</b> regressor, not a graph-only model.</div>
+    </div>
+   </div>
+  </div>
+ </div>
+</section>
+
+<section id="results">
+ <div class="wrap chapter">
+  <div class="chno"><strong>08</strong>Diagnostics</div>
+  <div class="chbody">
+   <h2 class="display">A model is more than one number.</h2>
+   <p class="intro">The repository stores per-model predictions, residuals and diagnostic plots. The figures below make the behaviour of each classical model visible rather than reducing the study to a leaderboard.</p>
+   <div class="gallery" style="margin-top:35px">
+    <div class="figure large"><img src="assets/figures/statistical_model_diagnostics.png" alt="Statistical model diagnostics"><div class="figcap">Statistical model diagnostics.</div></div>
+    <div class="figure"><img src="assets/figures/XGBoost_morgan_diagnostics.png" alt="XGBoost Morgan diagnostics"><div class="figcap">XGBoost · Morgan.</div></div>
+    <div class="figure"><img src="assets/figures/XGBoost_descriptors_diagnostics.png" alt="XGBoost descriptor diagnostics"><div class="figcap">XGBoost · descriptors.</div></div>
+    <div class="figure"><img src="assets/figures/LightGBM_combined_diagnostics.png" alt="LightGBM combined diagnostics"><div class="figcap">LightGBM · combined.</div></div>
+    <div class="figure"><img src="assets/figures/LightGBM_morgan_diagnostics.png" alt="LightGBM Morgan diagnostics"><div class="figcap">LightGBM · Morgan.</div></div>
+    <div class="figure"><img src="assets/figures/LightGBM_descriptors_diagnostics.png" alt="LightGBM descriptor diagnostics"><div class="figcap">LightGBM · descriptors.</div></div>
+    <div class="figure"><img src="assets/figures/RandomForest_morgan_diagnostics.png" alt="Random Forest Morgan diagnostics"><div class="figcap">Random Forest · Morgan.</div></div>
+    <div class="figure"><img src="assets/figures/RandomForest_descriptors_diagnostics.png" alt="Random Forest descriptor diagnostics"><div class="figcap">Random Forest · descriptors.</div></div>
+   </div>
+   <div class="darkband">
+    <div class="inner">
+     <h3>Correlation is not accuracy.</h3>
+     <p>For the best original XGBoost model, Pearson correlation is 0.7109 and Spearman correlation is 0.6935, while MAE is 0.6045 and RMSE is 0.7981. The metrics answer different questions; R² is not a percentage accuracy.</p>
+    </div>
+   </div>
+  </div>
+ </div>
+</section>
+
+<section id="comparison">
+ <div class="wrap chapter">
+  <div class="chno"><strong>09</strong>Matched audit</div>
+  <div class="chbody">
+   <h2 class="display">A negative GNN result can still be a useful result.</h2>
+   <p class="intro">A dedicated clean audit reserves 548 validation molecules from the original training portion while retaining the same 915-molecule test partition. This makes the classical/GNN comparison more directly comparable.</p>
+   <div style="overflow:auto;margin-top:35px">
+    <table>
+     <thead><tr><th>Model</th><th>Features</th><th>CV MAE</th><th>Test MAE</th><th>RMSE</th><th>R²</th><th>Pearson</th></tr></thead>
+     <tbody>
+      <tr class="best"><td>XGBoost · Combined</td><td>1038</td><td>0.6479</td><td><b>0.6352</b></td><td>0.8347</td><td>0.4553</td><td>0.6795</td></tr>
+      <tr><td>XGBoost · Morgan</td><td>1024</td><td>0.6569</td><td>0.6510</td><td>0.8519</td><td>0.4326</td><td>0.6648</td></tr>
+      <tr><td>RF · Combined</td><td>1038</td><td>0.6875</td><td>0.6764</td><td>0.8507</td><td>0.4341</td><td>0.6644</td></tr>
+      <tr><td>RF · Morgan</td><td>1024</td><td>0.6948</td><td>0.6852</td><td>0.8631</td><td>0.4175</td><td>0.6506</td></tr>
+      <tr><td>GNN · Graph + descriptors</td><td>34</td><td>—</td><td>0.6908</td><td>0.9093</td><td>0.3535</td><td>0.6225</td></tr>
+      <tr><td>XGBoost · Descriptors</td><td>14</td><td>0.7276</td><td>0.6969</td><td>0.8892</td><td>0.3818</td><td>0.6188</td></tr>
+      <tr><td>RF · Descriptors</td><td>14</td><td>0.7366</td><td>0.7169</td><td>0.8978</td><td>0.3698</td><td>0.6140</td></tr>
+     </tbody>
+    </table>
+   </div>
+   <div class="callout green"><b>0.0556 pIC50:</b> combined XGBoost has lower test MAE than the GNN on this fixed comparison. This does <b>not</b> prove GNNs are intrinsically inferior; it shows that this implemented architecture, training procedure, representation and split did not outperform the matched classical baseline.</div>
+  </div>
+ </div>
+</section>
+
+<section id="audit">
+ <div class="wrap chapter">
+  <div class="chno"><strong>10</strong>Audit</div>
+  <div class="chbody">
+   <h2 class="display">The uncomfortable parts stay on the page.</h2>
+   <p class="intro">The project includes a forensic implementation audit. These findings are part of the research record, not something to hide behind a polished interface.</p>
+   <div class="auditgrid" style="margin-top:35px">
+    <article class="audit"><div class="status">confirmed · reporting bug</div><h3>Feature-count metadata</h3><p>Original metric logs reported dimensions that did not match the selected estimator matrices. The actual model inputs are 1024 Morgan, 14 descriptors and 1038 combined; predictions are unaffected.</p></article>
+    <article class="audit"><div class="status">confirmed · methodological limitation</div><h3>Scaffold allocation bias</h3><p>The size-ordered scaffold allocation creates a singleton-heavy test set. It is leakage-safe but not a balanced scaffold sample.</p></article>
+    <article class="audit"><div class="status">audit warning</div><h3>90 disconnected structures</h3><p>Ninety disconnected structures remain after salt removal in the saved audit. They were not automatically deleted and require chemical inspection.</p></article>
+    <article class="audit"><div class="status">expression issue · no cohort change</div><h3>Activity threshold</h3><p>The current implementation uses normalized IC50_nM. The audit found zero differently classified rows versus the raw-value expression for this snapshot.</p></article>
+    <article class="audit"><div class="status">documentation correction</div><h3>13 GNN edge channels</h3><p>The current GNN implementation has 13 edge-feature channels. Older descriptions that say three are inconsistent with the current code.</p></article>
+    <article class="audit"><div class="status">validation limitation</div><h3>Single fixed split</h3><p>The principal results use a fixed scaffold-held-out partition. Repeated scaffold assignments are needed to quantify performance variability.</p></article>
+   </div>
+  </div>
+ </div>
+</section>
+
+<section id="interpretation">
+ <div class="wrap chapter">
+  <div class="chno"><strong>11</strong>Interpretation</div>
+  <div class="chbody">
+   <h2 class="display">What the study actually demonstrates.</h2>
+   <div class="three" style="margin-top:35px">
+    <div class="cell"><h3>Representation</h3><p>The saved results support a dataset-specific advantage for combining Morgan local structural information with global RDKit descriptors.</p></div>
+    <div class="cell"><h3>Classical models</h3><p>XGBoost is the strongest of the three saved combined-feature classical models on the original held-out partition.</p></div>
+    <div class="cell"><h3>Graph learning</h3><p>The implemented GNN did not outperform the matched classical baselines. That result is informative without implying universal GNN inferiority.</p></div>
+   </div>
+   <div class="darkband">
+    <div class="inner">
+     <h3>Not “50.2% accuracy”.</h3>
+     <p>The best original model has R² = 0.5020. That is a coefficient of determination, not classification accuracy. The model’s MAE is 0.6045 pIC50, and RMSE is 0.7981. The distinction matters when communicating scientific performance.</p>
+    </div>
+   </div>
+  </div>
+ </div>
+</section>
+
+<section id="limits">
+ <div class="wrap chapter">
+  <div class="chno"><strong>12</strong>Limits</div>
+  <div class="chbody">
+   <h2 class="display">Where the evidence stops.</h2>
+   <div class="limitlist" style="margin-top:30px">
+    <div class="limit"><div class="num">01</div><b>Dataset heterogeneity</b><span>Measurements aggregate multiple experimental sources, assays and laboratories; molecular structure alone does not encode all experimental variation.</span></div>
+    <div class="limit"><div class="num">02</div><b>Endpoint scope</b><span>IC50 is an assay-derived potency measure and is not equivalent to a universal thermodynamic binding constant.</span></div>
+    <div class="limit"><div class="num">03</div><b>Representation</b><span>Morgan fingerprints do not explicitly encode 3D conformation, protein interactions, solvent effects or molecular dynamics.</span></div>
+    <div class="limit"><div class="num">04</div><b>Validation</b><span>The saved test partition is fixed and singleton-heavy; repeated or balanced scaffold validation is still needed.</span></div>
+    <div class="limit"><div class="num">05</div><b>Model scope</b><span>The GNN result represents one implemented architecture/configuration, not an exhaustive graph-learning benchmark.</span></div>
+    <div class="limit"><div class="num">06</div><b>Unfinished analysis</b><span>No finalized applicability-domain method or formal activity-cliff analysis is claimed in the current study.</span></div>
+   </div>
+  </div>
+ </div>
+</section>
+
+<section id="repro">
+ <div class="wrap chapter">
+  <div class="chno"><strong>13</strong>Reproducibility</div>
+  <div class="chbody">
+   <h2 class="display">A repository you can interrogate.</h2>
+   <p class="intro">The research record contains source modules, data snapshots, metrics, predictions, Optuna trials, audit tables, model checkpoints and diagnostic figures.</p>
+   <div class="three" style="margin-top:35px">
+    <div class="cell"><h3>Environment</h3><p class="mono">Python 3.12.3<br>RDKit 2026.03.4<br>Pandas 2.3.3<br>NumPy 2.4.3<br>scikit-learn 1.9.0<br>SciPy 1.17.1</p></div>
+    <div class="cell"><h3>Experimental identity</h3><p class="mono">CHEMBL220<br>IC50 → pIC50<br>Morgan r2 / 1024<br>14 descriptors<br>seed 50</p></div>
+    <div class="cell"><h3>Matched audit</h3><p class="mono">3,108 train<br>548 validation<br>915 test<br>0 scaffold overlap</p></div>
+   </div>
+   <div class="repo-grid" style="margin-top:30px">
+    <a class="repo" href="https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling/tree/senju/src" target="_blank"><div class="rno">01 / SOURCE</div><h3>Implementation ↗</h3><p>Data ingestion, curation, engineering, models, GNN and audit code.</p></a>
+    <a class="repo" href="https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling/tree/senju/docs/assets/figures" target="_blank"><div class="rno">02 / FIGURES</div><h3>Figure archive ↗</h3><p>All saved model diagnostic and comparison figures used here.</p></a>
+    <a class="repo" href="https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling/tree/senju/output" target="_blank"><div class="rno">03 / OUTPUT</div><h3>Experiment archive ↗</h3><p>Metrics, predictions, audit artifacts and model outputs.</p></a>
+    <a class="repo" href="https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling/blob/senju/audit_forensic_report.md" target="_blank"><div class="rno">04 / AUDIT</div><h3>Forensic report ↗</h3><p>Detailed implementation and methodology audit.</p></a>
+    <a class="repo" href="https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling/blob/senju/REPORT.pdf" target="_blank"><div class="rno">05 / REPORT</div><h3>Scientific report ↗</h3><p>The complete manuscript-level research record.</p></a>
+    <a class="repo" href="https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling/blob/senju/CITATION.cff" target="_blank"><div class="rno">06 / CITATION</div><h3>Citation metadata ↗</h3><p>Software citation information for the repository.</p></a>
+    <a class="repo" href="https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling/releases" target="_blank"><div class="rno">07 / RELEASES</div><h3>Version history ↗</h3><p>Versioned research states and release provenance.</p></a>
+    <a class="repo" href="https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling/blob/senju/RESEARCH_RECORD.md" target="_blank"><div class="rno">08 / RECORD</div><h3>Research record ↗</h3><p>Scope, provenance and documented research snapshot.</p></a>
+   </div>
+  </div>
+ </div>
+</section>
+
+<section id="future" style="background:#0b0e10;color:#eee">
+ <div class="wrap chapter">
+  <div class="chno" style="color:#7f898e"><strong style="color:#eee">14</strong>Future</div>
+  <div class="chbody">
+   <h2 class="display" style="color:#f5f3ed">The next experiment should answer a harder question.</h2>
+   <p class="intro" style="color:#b7bec2">These are directions, not claims of completed work.</p>
+   <div class="roadmap" style="margin-top:35px">
+    <div class="road"><div class="phase">Immediate</div><h3>Clean reproduction</h3><p>Inspect disconnected structures, correct metadata, normalize threshold expression and reproduce the principal metrics.</p></div>
+    <div class="road"><div class="phase">Chemical analysis</div><h3>Explain the errors</h3><p>Rank residuals, examine nearest-neighbour similarity and test whether activity cliffs concentrate among high-error molecules.</p></div>
+    <div class="road"><div class="phase">Validation</div><h3>Repeat the scaffolds</h3><p>Use repeated or balanced scaffold assignments to quantify how sensitive performance is to test-set composition.</p></div>
+    <div class="road"><div class="phase">Graph ML</div><h3>Push the representation</h3><p>Explore edge encoding, message-passing depth, pooling, descriptor integration, regularization and repeated seeds.</p></div>
+    <div class="road"><div class="phase">Generalization</div><h3>External validation</h3><p>Test on an independent or temporally separated dataset to strengthen claims beyond the current fixed partition.</p></div>
+    <div class="road"><div class="phase">Long horizon</div><h3>Structure → mechanism</h3><p>3D/geometric modelling, protein–ligand interactions, docking-derived information, uncertainty and constrained generative design.</p></div>
+   </div>
+  </div>
+ </div>
+</section>
+
+<section id="report">
+ <div class="wrap">
+  <div style="max-width:980px">
+   <div class="eyebrow" style="color:#4f8d77">THE FULL RECORD</div>
+   <h2 class="display" style="font-size:clamp(48px,7vw,92px);line-height:.9;margin:0 0 25px">If the interface raised a question, the report answers it.</h2>
+   <p style="font-size:19px;max-width:800px">The landing page is the visual layer. The scientific report contains the detailed methodology, equations, tables, audit findings, limitations, reproducibility record and future-work analysis.</p>
+   <div class="ctas">
+    <a class="cta primary" href="https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling/blob/senju/REPORT.pdf" target="_blank">OPEN REPORT.PDF ↗</a>
+    <a class="cta" href="https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling" target="_blank">OPEN REPOSITORY ↗</a>
+   </div>
+  </div>
+ </div>
+</section>
+
+</main>
+
+<footer>
+ <div class="wrap footergrid">
+  <div><h3>AChE / ML</h3><p>Structure-aware molecular machine learning for acetylcholinesterase inhibitory potency prediction.</p><p>Darshan Venkataramanan · CHEMBL220 · October 2026</p></div>
+  <div><h3>Navigate</h3><p><a href="#biology">Biology</a><br><a href="#curation">Curation</a><br><a href="#representation">Representation</a><br><a href="#models">Models</a><br><a href="#audit">Audit</a></p></div>
+  <div><h3>External</h3><p><a href="https://www.ebi.ac.uk/chembl/" target="_blank">ChEMBL ↗</a><br><a href="https://www.uniprot.org/uniprotkb/P22303/entry" target="_blank">UniProt ↗</a><br><a href="https://github.com/TheHashiramaSenju/AcHe-QSAR-modelling" target="_blank">GitHub ↗</a></p></div>
+ </div>
+</footer>
+
+</body>
+</html>
