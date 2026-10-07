@@ -1,0 +1,92 @@
+[
+  {
+    "file": "LightGBM_combined_optuna_trials.csv",
+    "rows_recorded": 5,
+    "complete_trials": 5,
+    "failed_trials": 0,
+    "pruned_trials": 0,
+    "states": {
+      "COMPLETE": 5
+    }
+  },
+  {
+    "file": "LightGBM_descriptors_optuna_trials.csv",
+    "rows_recorded": 5,
+    "complete_trials": 5,
+    "failed_trials": 0,
+    "pruned_trials": 0,
+    "states": {
+      "COMPLETE": 5
+    }
+  },
+  {
+    "file": "LightGBM_morgan_optuna_trials.csv",
+    "rows_recorded": 5,
+    "complete_trials": 5,
+    "failed_trials": 0,
+    "pruned_trials": 0,
+    "states": {
+      "COMPLETE": 5
+    }
+  },
+  {
+    "file": "RandomForest_combined_optuna_trials.csv",
+    "rows_recorded": 5,
+    "complete_trials": 5,
+    "failed_trials": 0,
+    "pruned_trials": 0,
+    "states": {
+      "COMPLETE": 5
+    }
+  },
+  {
+    "file": "RandomForest_descriptors_optuna_trials.csv",
+    "rows_recorded": 5,
+    "complete_trials": 5,
+    "failed_trials": 0,
+    "pruned_trials": 0,
+    "states": {
+      "COMPLETE": 5
+    }
+  },
+  {
+    "file": "RandomForest_morgan_optuna_trials.csv",
+    "rows_recorded": 5,
+    "complete_trials": 5,
+    "failed_trials": 0,
+    "pruned_trials": 0,
+    "states": {
+      "COMPLETE": 5
+    }
+  },
+  {
+    "file": "XGBoost_combined_optuna_trials.csv",
+    "rows_recorded": 5,
+    "complete_trials": 5,
+    "failed_trials": 0,
+    "pruned_trials": 0,
+    "states": {
+      "COMPLETE": 5
+    }
+  },
+  {
+    "file": "XGBoost_descriptors_optuna_trials.csv",
+    "rows_recorded": 5,
+    "complete_trials": 5,
+    "failed_trials": 0,
+    "pruned_trials": 0,
+    "states": {
+      "COMPLETE": 5
+    }
+  },
+  {
+    "file": "XGBoost_morgan_optuna_trials.csv",
+    "rows_recorded": 5,
+    "complete_trials": 5,
+    "failed_trials": 0,
+    "pruned_trials": 0,
+    "states": {
+      "COMPLETE": 5
+    }
+  }
+]

@@ -1,0 +1,45 @@
+{
+  "count": 4597,
+  "missing": 0,
+  "nonfinite": 0,
+  "min": 5.0,
+  "max": 10.96059,
+  "mean": 6.517570785294757,
+  "median": 6.30103,
+  "std": 1.1280260559991142,
+  "quantiles": {
+    "1%": 5.00877,
+    "5%": 5.107798000000001,
+    "25%": 5.59346,
+    "50%": 6.30103,
+    "75%": 7.21,
+    "95%": 8.622698,
+    "99%": 9.6275372
+  },
+  "zero_IC50": 0,
+  "negative_IC50": 0,
+  "zero_pIC50": 0,
+  "negative_pIC50": 0,
+  "extreme_pIC50_below_0_or_above_20": 0,
+  "normalized_IC50_stats_nM": {
+    "count": 4597,
+    "missing": 0,
+    "nonfinite": 0,
+    "min": 0.01095,
+    "max": 10000.0,
+    "mean": 1793.0498067217752,
+    "median": 500.0,
+    "std": 2554.976994032237
+  },
+  "threshold_boundary_counts": {
+    "within_1_percent_of_10000_nM": 34,
+    "within_5_percent_of_10000_nM": 69,
+    "within_10_percent_of_10000_nM": 116
+  },
+  "raw_standard_value_sanity": {
+    "null_or_non_numeric": 0,
+    "nonfinite": 0,
+    "zero": 1,
+    "negative": 0
+  }
+}

@@ -1,0 +1,2 @@
+model,features,test_mae,test_rmse,test_r2,pearson_r,pearson_p,spearman_r,spearman_p,cv_neg_mae,n_train,n_test,n_features,optuna_trials_requested,optuna_trials_complete
+XGBoost,descriptors,0.6555374046343927,0.8500619410033551,0.43346383577199954,0.6589234213515723,1.2029929949808664e-115,0.6341499635240706,1.1874618311275613e-104,-0.6750604140357688,3677,920,14,5,5

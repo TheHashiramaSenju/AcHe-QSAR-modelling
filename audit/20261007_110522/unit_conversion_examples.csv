@@ -1,0 +1,5 @@
+original_standard_units,standard_value,code_conversion_factor_to_nM,normalized_IC50_nM,expected_IC50_nM_from_code_factor,normalized_pIC50,pIC50_recomputed_from_normalized_IC50,conversion_matches_code,pIC50_matches_code
+10'5pM,9.14,100.0,914.0,914.0,6.03905,6.03905,True,True
+10'6pM,1.36,1000.0,1360.0,1360.0,5.86646,5.86646,True,True
+10'3pM,3.46,1.0,3.46,3.46,8.46092,8.46092,True,True
+nM,750.0,1.0,750.0,750.0,6.12494,6.12494,True,True

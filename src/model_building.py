@@ -5,10 +5,8 @@ from pathlib import Path
 import pandas as pd
 from sklearn.model_selection import GroupKFold
 import joblib 
-import lightgbm as lgb
 import xgboost as xgb
 import matplotlib.pyplot as plt
-import seaborn as sns
 from sklearn.ensemble import RandomForestRegressor
 from scipy.stats import pearsonr, spearmanr
 from sklearn.metrics import mean_squared_error, r2_score
@@ -71,6 +69,8 @@ class Model:
             model = xgb.XGBRegressor(**params)
         
         if model_type == "LightGBM":
+            import lightgbm as lgb
+
             params = {
                 "n_estimators": trial.suggest_int("lgb_n_estimators", 100, 1500),
                 "max_depth": trial.suggest_int("lgb_max_depth", 3, 12),
@@ -129,8 +129,19 @@ class Model:
             if column.startswith("morgan_") or column in descriptor_columns
         ]
 
-    def _optimize_and_evaluate(self, model_type, variant, study_name, file_name, n_trials=100):
-        X_train, y_train, X_test, y_test = self._prepare_data(variant)
+    def _optimize_and_evaluate(
+        self,
+        model_type,
+        variant,
+        study_name,
+        file_name,
+        n_trials=100,
+        prepared_data=None,
+    ):
+        if prepared_data is None:
+            X_train, y_train, X_test, y_test = self._prepare_data(variant)
+        else:
+            X_train, y_train, X_test, y_test = prepared_data
         model_columns = self._model_columns(X_train, variant)
         X_train_model = X_train[model_columns]
         X_test_model = X_test[model_columns]
@@ -227,11 +238,11 @@ class Model:
         joblib.dump(model, self.model_path / file_name)
 
         fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-        sns.scatterplot(x=y_test, y=y_pred, ax=axes[0])
+        axes[0].scatter(y_test, y_pred, alpha=0.65, s=18)
         axes[0].set_title(f"{model_name}: predictions")
         axes[0].set_xlabel("Actual pIC50")
         axes[0].set_ylabel("Predicted pIC50")
-        sns.histplot(residuals, kde=True, ax=axes[1])
+        axes[1].hist(residuals, bins=30, alpha=0.8)
         axes[1].set_title(f"{model_name}: residuals")
         axes[1].set_xlabel("Actual - predicted")
         fig.tight_layout()
@@ -326,6 +337,8 @@ class Model:
         comparison = pd.DataFrame(results).sort_values("test_mae").reset_index(drop=True)
         comparison.to_csv(self.log_path / "model_comparison_metrics.csv", index=False)
 
+        import seaborn as sns
+
         fig, axes = plt.subplots(1, 2, figsize=(14, 5))
         sns.barplot(data=comparison, x="test_mae", y="model", hue="features", ax=axes[0])
         axes[0].set_title("Model comparison by test MAE")
@@ -355,6 +368,8 @@ class Model:
 
         if not prediction_frames:
             return
+
+        import seaborn as sns
 
         prediction_table = pd.concat(prediction_frames, ignore_index=True)
         prediction_table.to_csv(

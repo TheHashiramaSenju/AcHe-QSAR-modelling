@@ -1,0 +1,2 @@
+model,features,test_mae,test_rmse,test_r2,pearson_r,pearson_p,spearman_r,spearman_p,cv_neg_mae,n_train,n_test,n_features,optuna_trials_requested,optuna_trials_complete
+RandomForest,descriptors,0.7154830100485671,0.8957537198260597,0.3709231060954761,0.617833594471382,6.071632524840632e-98,0.5990314069572501,1.0967947214347458e-90,-0.7152115565579054,3677,920,14,5,5

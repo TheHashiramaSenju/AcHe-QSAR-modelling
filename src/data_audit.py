@@ -793,6 +793,8 @@ class DataAudit:
         }
 
     def _scaffold_audit(self, final):
+        if final["InChIkey"].isna().any() or final["InChIkey"].duplicated().any():
+            raise ValueError("Final modelling cohort must contain one non-null row per InChIKey")
         matrix = rdFingerprintGenerator.GetMorganGenerator(radius=MORGAN_RADIUS, fpSize=MORGAN_SIZE)
         scaffold_values = final["cleaned_smiles"].apply(scaffold_smiles)
         scaffold_keys = scaffold_values.apply(safe_inchikey).astype("object")
@@ -1213,11 +1215,15 @@ class DataAudit:
         write_json(self.run_dir / "target_statistics.json", target_checks)
 
         morgan_generator = rdFingerprintGenerator.GetMorganGenerator(radius=MORGAN_RADIUS, fpSize=MORGAN_SIZE)
-        scaffold_stats, _ = self._scaffold_audit(current_a)
+        scaffold_stats, _ = self._scaffold_audit(current_final)
         structure_frame = self.snapshots["InChIKey generation"]
-        feature_audit = self._feature_audit(current_a, morgan_generator, structure_frame)
-        leakage = self._leakage_audit(current_a, feature_audit)
-        target_distributions = self._target_distribution(current_a, self.split_assignments)
+        feature_audit = self._feature_audit(current_final, morgan_generator, structure_frame)
+        if feature_audit["molecules"] != len(current_final):
+            raise ValueError("Feature audit rows do not match the final modelling cohort")
+        if scaffold_stats["molecules_train"] + scaffold_stats["molecules_test"] != len(current_final):
+            raise ValueError("Scaffold partitions do not cover the final modelling cohort")
+        leakage = self._leakage_audit(current_final, feature_audit)
+        target_distributions = self._target_distribution(current_final, self.split_assignments)
         final_target_stats = target_distributions["final_current_filter"]
 
         relation_counts_dict = {("<NULL>" if pd.isna(key) else str(key)): int(value) for key, value in relation_counts.items()}
