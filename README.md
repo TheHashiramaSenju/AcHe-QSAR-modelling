@@ -47,7 +47,6 @@
 - [📊 Experimental Design](#-experimental-design)
 - [🧠 Graph Neural Network](#-Graph-Neural-Network)
 - [📈 Architecture](#-Architecture)
-- [🗂️ Repository Structure](#️-repository-structure)
 - [🛠️ Technology Stack](#️-technology-stack)
 - [🚧 Current Status](#-current-status)
 - [🔭 Future Direction](#-future-direction)
@@ -314,7 +313,7 @@ Best Hyperparameters
 Final Training
 ```
 
-The current implementation uses **5-fold GroupKFold**, with scaffold identity used as the grouping variable.
+The current implementation uses **3-fold GroupKFold**, with scaffold identity used as the grouping variable.
 
 The optimization objective is based on mean absolute error.
 
@@ -383,7 +382,7 @@ Morgan + RDKit
            Training        Test
               │
               ▼
-       Grouped 5-Fold CV
+       Grouped 3-Fold CV
               │
               ▼
        Optuna Optimization
@@ -473,7 +472,7 @@ Atom Features + Bond Features
      Residual + Normalization
              ↓
        Graph Representation
-
+```
 
 ## 📈 Architecture
 
@@ -484,38 +483,6 @@ Atom Features + Bond Features
 </div>
 
 
-
-## 🗂️ Repository Structure
-
-```text
-AChE-Molecular-ML/
-│
-├── assets/
-│   ├── archbanner.png
-│   ├── archclean.png
-│   └── splits.png
-│
-├── src/
-│   ├── data/
-│   ├── features/
-│   ├── models/
-│   ├── evaluation/
-│   └── pipeline.py
-│
-├── notebooks/
-├── configs/
-│
-├── results/
-│   ├── figures/
-│   ├── metrics/
-│   └── predictions/
-│
-├── docs/
-│
-├── requirements.txt
-├── .gitignore
-└── README.md
-```
 
 ---
 
@@ -532,7 +499,7 @@ AChE-Molecular-ML/
 | Statistics | SciPy |
 | Visualization | Matplotlib · Seaborn |
 | Experiment Tracking | MLflow |
-| Graph ML — planned | PyTorch · PyTorch Geometric |
+| Graph ML  | PyTorch · PyTorch Geometric |
 
 ---
 
