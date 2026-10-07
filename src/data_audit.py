@@ -194,6 +194,45 @@ def scaffold_smiles(smiles):
     return Chem.MolToSmiles(scaffold)
 
 
+def disconnected_structure_details(smiles):
+    molecule = Chem.MolFromSmiles(smiles) if isinstance(smiles, str) else None
+    if molecule is None:
+        return {"classification": "invalid or uncertain", "component_count": None, "components": None}
+    fragments = Chem.GetMolFrags(molecule, asMols=True, sanitizeFrags=True)
+    if len(fragments) < 2:
+        return {"classification": "not disconnected", "component_count": len(fragments), "components": None}
+
+    component_data = []
+    for fragment in fragments:
+        atoms = list(fragment.GetAtoms())
+        component_data.append({
+            "smiles": Chem.MolToSmiles(fragment),
+            "heavy_atoms": fragment.GetNumHeavyAtoms(),
+            "carbon_atoms": sum(atom.GetAtomicNum() == 6 for atom in atoms),
+            "formal_charge": Chem.GetFormalCharge(fragment),
+            "elements": ",".join(sorted({atom.GetSymbol() for atom in atoms})),
+        })
+    ordered = sorted(component_data, key=lambda item: item["heavy_atoms"], reverse=True)
+    substantial_organic = [
+        item for item in ordered if item["carbon_atoms"] >= 2 and item["heavy_atoms"] >= 4
+    ]
+    if len(substantial_organic) > 1:
+        classification = "multiple substantial organic components; mixture or multicomponent entity uncertain"
+    elif (
+        ordered[0]["carbon_atoms"] >= 4
+        and all(item["heavy_atoms"] <= 8 for item in ordered[1:])
+        and any(item["formal_charge"] != 0 for item in ordered[1:])
+    ):
+        classification = "small charged fragment; residual salt or counterion candidate"
+    else:
+        classification = "other disconnected structure; uncertain"
+    return {
+        "classification": classification,
+        "component_count": len(component_data),
+        "components": json.dumps(ordered, ensure_ascii=True, sort_keys=True),
+    }
+
+
 def stable_hash(frame: pd.DataFrame, columns: list[str]) -> str:
     available = [column for column in columns if column in frame]
     stable = frame[available].copy()
@@ -293,35 +332,100 @@ class DataAudit:
             data["standard_value"],
             9 - data["standard_value"],
         ]
-        data["PIC50"] = np.select(conditions, choices)
-        data["PIC50"] = data["PIC50"].round(5)
+        data["PIC50"] = np.select(conditions, choices, default=np.nan)
+        data["PIC50"] = pd.to_numeric(data["PIC50"], errors="coerce").round(5)
+        data = data.loc[np.isfinite(data["PIC50"])].copy()
         self.record_stage("pIC50 conversion", data, self.snapshots["Supported-unit filter and IC50 normalization"])
 
-        before = data.copy()
-        data["median"] = data.groupby("InChIkey")["PIC50"].transform("median")
-        data["compared_median"] = abs(data["median"] - data["PIC50"])
-        data["group_MAD"] = data.groupby("InChIkey")["compared_median"].transform("median")
-        self.record_stage("InChIKey replicate median/MAD calculation", data, before)
-
-        mad_before = data.copy()
-        data = data.loc[data["group_MAD"] <= MAD_THRESHOLD].copy()
-        data["PIC50"] = data["median"]
-        self.record_stage("Group MAD <= 1.0 filter", data, mad_before)
-
-        before = data.copy()
-        data = data.drop_duplicates(subset=["InChIkey", "cleaned_smiles", "PIC50"]).copy()
-        data = data.drop(columns=["median", "compared_median", "group_MAD"])
-        self.record_stage("Exact duplicate removal after MAD", data, before)
-
-        before = data.copy()
+        relation_before = data.copy()
         data = data.loc[data["standard_relation"] == RELATION_FILTER].copy()
-        self.record_stage('standard_relation == "=" filter', data, before)
+        self.record_stage('standard_relation == "=" filter', data, relation_before)
 
+        activity_before = data.copy()
+        normalized_ic50 = pd.to_numeric(data["IC50"], errors="coerce")
+        data = data.loc[normalized_ic50.gt(0) & normalized_ic50.le(ACTIVITY_THRESHOLD)].copy()
+        self.record_stage("IC50_nM > 0 and IC50_nM <= 10000 activity filter", data, activity_before)
         self.interpretation_cohort = data.copy()
-        before = data.copy()
-        current_final = data.loc[data["standard_value"] <= ACTIVITY_THRESHOLD].copy()
-        self.record_stage("Current standard_value <= 10000 activity filter", current_final, before)
+
+        current_candidates = data.copy()
+        current_candidates["median"] = current_candidates.groupby("InChIkey")["PIC50"].transform("median")
+        current_candidates["compared_median"] = abs(current_candidates["PIC50"] - current_candidates["median"])
+        current_candidates["group_MAD"] = current_candidates.groupby("InChIkey")["compared_median"].transform("median")
+        current = current_candidates.loc[current_candidates["group_MAD"].le(MAD_THRESHOLD)].copy()
+        current["PIC50_measurement"] = current["PIC50"]
+        current["PIC50"] = current["median"]
+        self.current_measurement_records = current.copy()
+        self.record_stage("Current-order replicate MAD <= 1.0", current, data)
+        current_final = current.drop_duplicates(subset=["InChIkey"], keep="first").copy()
+        current_final = current_final.drop(columns=["median", "compared_median", "group_MAD"])
+        self.record_stage("Final molecule-level InChIKey deduplication", current_final, current)
+
+        alternative = self.snapshots["pIC50 conversion"].copy()
+        alternative["median"] = alternative.groupby("InChIkey")["PIC50"].transform("median")
+        alternative["compared_median"] = abs(alternative["PIC50"] - alternative["median"])
+        alternative["group_MAD"] = alternative.groupby("InChIkey")["compared_median"].transform("median")
+        alternative = alternative.loc[alternative["group_MAD"].le(MAD_THRESHOLD)].copy()
+        alternative["PIC50"] = alternative["median"]
+        alternative_ic50 = pd.to_numeric(alternative["IC50"], errors="coerce")
+        alternative = alternative.loc[
+            alternative["standard_relation"].eq(RELATION_FILTER)
+            & alternative_ic50.gt(0)
+            & alternative_ic50.le(ACTIVITY_THRESHOLD)
+        ].copy()
+        alternative_final = alternative.drop_duplicates(subset=["InChIkey"], keep="first").copy()
+        self.alternative_final = alternative_final
         return raw, current_final
+
+    def _replicate_qc_sensitivity(self, current, alternative):
+        current_labels = current.dropna(subset=["InChIkey"]).drop_duplicates("InChIkey").set_index("InChIkey")["PIC50"]
+        alternative_labels = alternative.dropna(subset=["InChIkey"]).drop_duplicates("InChIkey").set_index("InChIkey")["PIC50"]
+        comparison = pd.concat(
+            [current_labels.rename("current_pIC50"), alternative_labels.rename("alternative_pIC50")],
+            axis=1,
+        )
+        comparison["in_current"] = comparison["current_pIC50"].notna()
+        comparison["in_alternative"] = comparison["alternative_pIC50"].notna()
+        comparison["pIC50_changed"] = (
+            comparison["in_current"]
+            & comparison["in_alternative"]
+            & ~np.isclose(comparison["current_pIC50"], comparison["alternative_pIC50"], atol=1e-5, rtol=0)
+        )
+        comparison.index.name = "InChIkey"
+        comparison.to_csv(self.run_dir / "replicate_qc_sensitivity.csv")
+
+        def distribution(values):
+            return target_stats(pd.Series(values))
+
+        current_keys = set(current_labels.index)
+        alternative_keys = set(alternative_labels.index)
+        current_stats = distribution(current_labels)
+        alternative_stats = distribution(alternative_labels)
+        summary = {
+            "current_order": {
+                "molecules": len(current_keys),
+                "unique_InChIKeys": len(current_keys),
+                "pIC50": current_stats,
+            },
+            "alternative_order": {
+                "molecules": len(alternative_keys),
+                "unique_InChIKeys": len(alternative_keys),
+                "pIC50": alternative_stats,
+            },
+            "overlap_InChIKeys": len(current_keys & alternative_keys),
+            "unique_to_current": len(current_keys - alternative_keys),
+            "unique_to_alternative": len(alternative_keys - current_keys),
+            "molecules_with_changed_pIC50": int(comparison["pIC50_changed"].sum()),
+            "mean_difference_alternative_minus_current": (
+                alternative_stats["mean"] - current_stats["mean"]
+                if current_stats["mean"] is not None and alternative_stats["mean"] is not None else None
+            ),
+            "median_difference_alternative_minus_current": (
+                alternative_stats["median"] - current_stats["median"]
+                if current_stats["median"] is not None and alternative_stats["median"] is not None else None
+            ),
+            "definition": "Current: relation and normalized IC50 filters before replicate QC. Alternative: replicate QC before relation and normalized IC50 filters.",
+        }
+        return summary
 
     def _unit_audit(self, raw, after_duplicates, supported):
         records = []
@@ -532,6 +636,162 @@ class DataAudit:
             )
         return keep_a_table.copy(), keep_b_table.copy(), stats
 
+    def _provenance_audit(self, final):
+        records = self.current_measurement_records.copy()
+        curated_labels = final.set_index("InChIkey")["PIC50"].rename("curated_pIC50")
+        records = records.join(curated_labels, on="InChIkey")
+        records = records.rename_axis("source_index").reset_index()
+        provenance_columns = [
+            "source_index", "InChIkey", "cleaned_smiles", "molecule_chembl_id",
+            "parent_molecule_chembl_id", "activity_id", "record_id", "assay_chembl_id",
+            "target_chembl_id", "standard_type", "standard_value", "source_standard_units",
+            "standard_relation", "IC50", "PIC50_measurement", "curated_pIC50",
+        ]
+        provenance_columns = [column for column in provenance_columns if column in records]
+        records[provenance_columns].to_csv(self.run_dir / "provenance_mapping.csv", index=False)
+        return {
+            "contributing_measurement_rows": int(len(records)),
+            "curated_molecules": int(records["InChIkey"].nunique(dropna=True)),
+            "available_source_identifier_columns": [
+                column for column in provenance_columns
+                if column in {"molecule_chembl_id", "parent_molecule_chembl_id", "activity_id", "record_id", "assay_chembl_id", "target_chembl_id"}
+            ],
+            "artifact": "provenance_mapping.csv",
+        }
+
+    def _assay_audit(self, final):
+        records = self.current_measurement_records.copy()
+        records["curated_pIC50"] = records["InChIkey"].map(final.set_index("InChIkey")["PIC50"])
+        if "assay_chembl_id" in records:
+            assay_rows = []
+            for assay_id, group in records.groupby("assay_chembl_id", dropna=False, sort=False):
+                row = {
+                    "assay_chembl_id": assay_id,
+                    "measurement_count": int(len(group)),
+                    "molecule_count": int(group["InChIkey"].nunique(dropna=True)),
+                    "measurement_pIC50_mean": float(group["PIC50_measurement"].mean()),
+                    "measurement_pIC50_median": float(group["PIC50_measurement"].median()),
+                    "curated_pIC50_mean": float(group["curated_pIC50"].mean()),
+                    "curated_pIC50_median": float(group["curated_pIC50"].median()),
+                }
+                for column in ["assay_type", "bao_endpoint", "bao_format", "bao_label", "assay_variant_accession", "assay_variant_mutation"]:
+                    if column in group:
+                        values = group[column].dropna().astype(str).unique()
+                        row[column] = ";".join(sorted(values))
+                assay_rows.append(row)
+            pd.DataFrame(assay_rows).to_csv(self.run_dir / "assay_by_id.csv", index=False)
+
+        category_rows = []
+        for column in ["assay_type", "bao_endpoint", "bao_format", "bao_label", "assay_variant_accession", "assay_variant_mutation"]:
+            if column not in records:
+                continue
+            for category, group in records.groupby(column, dropna=False, sort=False):
+                category_rows.append({
+                    "metadata_field": column,
+                    "metadata_value": "<NULL>" if pd.isna(category) else str(category),
+                    "measurement_count": int(len(group)),
+                    "molecule_count": int(group["InChIkey"].nunique(dropna=True)),
+                    "assay_count": int(group["assay_chembl_id"].nunique(dropna=True)) if "assay_chembl_id" in group else None,
+                    "pIC50_mean": float(group["PIC50_measurement"].mean()),
+                    "pIC50_median": float(group["PIC50_measurement"].median()),
+                    "pIC50_std": float(group["PIC50_measurement"].std()) if len(group) > 1 else None,
+                })
+        pd.DataFrame(category_rows).to_csv(self.run_dir / "assay_metadata_categories.csv", index=False)
+        assay_count = int(records["assay_chembl_id"].nunique(dropna=True)) if "assay_chembl_id" in records else None
+        assay_sizes = records.groupby("assay_chembl_id")["InChIkey"].nunique() if "assay_chembl_id" in records else pd.Series(dtype=int)
+        return {
+            "available_assay_metadata": [
+                column for column in ["assay_chembl_id", "assay_type", "bao_endpoint", "bao_format", "bao_label", "assay_variant_accession", "assay_variant_mutation"]
+                if column in records
+            ],
+            "unique_assay_ids_in_contributing_measurements": assay_count,
+            "molecules_with_assay_context": int(records["InChIkey"].nunique(dropna=True)),
+            "largest_assay_molecule_count": int(assay_sizes.max()) if not assay_sizes.empty else None,
+            "largest_assay_fraction_of_curated_molecules": (
+                float(assay_sizes.max() / len(final)) if not assay_sizes.empty and len(final) else None
+            ),
+            "category_interpretation": "Reported metadata values only; no biological assay categories are inferred.",
+            "artifacts": ["assay_by_id.csv", "assay_metadata_categories.csv"],
+        }
+
+    def _model_output_audit(self):
+        output_root = self.root / "output"
+        log_root = output_root / "logs"
+        audit_root = output_root / "audit" / "GNN_classical_comparison"
+        metric_rows = []
+        trial_rows = []
+        for metric_path in sorted(log_root.glob("*_metrics.csv")):
+            frame = pd.read_csv(metric_path)
+            if frame.empty:
+                continue
+            for _, row in frame.iterrows():
+                metric_rows.append({"file": metric_path.name, **row.to_dict()})
+        for trials_path in sorted(log_root.glob("*_optuna_trials.csv")):
+            frame = pd.read_csv(trials_path)
+            state_counts = frame.get("state", pd.Series(dtype=object)).value_counts(dropna=False).to_dict()
+            trial_rows.append({
+                "file": trials_path.name,
+                "rows_recorded": int(len(frame)),
+                "complete_trials": int(state_counts.get("COMPLETE", 0)),
+                "failed_trials": int(state_counts.get("FAIL", 0)),
+                "pruned_trials": int(state_counts.get("PRUNED", 0)),
+                "states": {str(key): int(value) for key, value in state_counts.items()},
+            })
+        pd.DataFrame(metric_rows).to_csv(self.run_dir / "existing_model_metric_metadata.csv", index=False)
+        write_json(self.run_dir / "existing_optuna_trial_counts.json", trial_rows)
+
+        matched_metrics_path = audit_root / "comparison_metrics.csv"
+        matched_metrics = pd.read_csv(matched_metrics_path) if matched_metrics_path.exists() else pd.DataFrame()
+        matched_rows = []
+        matched_test_path = audit_root / "matched_gnn_test_rows.csv"
+        gnn_test_path = log_root / "GNN_test.csv"
+        consistency = {"matched_comparison_available": not matched_metrics.empty}
+        if matched_test_path.exists() and gnn_test_path.exists():
+            matched_test = pd.read_csv(matched_test_path)
+            saved_gnn_test = pd.read_csv(gnn_test_path)
+            if "source_index" in matched_test and "source_index" in saved_gnn_test:
+                matched_ids = set(pd.to_numeric(matched_test["source_index"], errors="coerce").dropna().astype(int))
+                gnn_ids = set(pd.to_numeric(saved_gnn_test["source_index"], errors="coerce").dropna().astype(int))
+                consistency.update({
+                    "matched_test_rows": len(matched_ids),
+                    "saved_gnn_test_rows": len(gnn_ids),
+                    "matched_test_ids_equal_saved_gnn_test_ids": matched_ids == gnn_ids,
+                    "matched_test_id_overlap": len(matched_ids & gnn_ids),
+                })
+            if "source_index" in matched_test:
+                matched_rows = matched_test["source_index"].tolist()
+        else:
+            consistency["matched_test_ids_equal_saved_gnn_test_ids"] = None
+
+        gnn_partition_counts = {}
+        for split in ["train", "validation", "test"]:
+            split_path = log_root / f"GNN_{split}.csv"
+            if split_path.exists():
+                gnn_partition_counts[split] = int(len(pd.read_csv(split_path)))
+        report_path = audit_root / "audit_report.md"
+        report_text = report_path.read_text(encoding="utf-8") if report_path.exists() else ""
+        consistency["saved_audit_report_states_test_excluded_from_tuning"] = (
+            "test partition is held out from both classical hyperparameter search and model fitting" in report_text
+        ) if report_text else None
+        consistency["saved_audit_report_states_grouped_cv"] = (
+            "GroupKFold" in report_text and "training scaffolds only" in report_text
+        ) if report_text else None
+        consistency["gnn_partition_counts"] = gnn_partition_counts
+        if not matched_metrics.empty:
+            matched_metrics.to_csv(self.run_dir / "existing_matched_comparison_metrics.csv", index=False)
+            for _, row in matched_metrics.iterrows():
+                matched_rows.append({key: row.get(key) for key in ["model", "features", "n_features", "n_train", "n_test", "cv_folds", "optuna_trials"]})
+        consistency["matched_model_partition_metadata"] = matched_rows
+        consistency["matched_prediction_source_rows"] = len(matched_rows)
+
+        return {
+            "saved_metric_artifact_count": len(metric_rows),
+            "saved_optuna_study_artifact_count": len(trial_rows),
+            "optuna_trial_counts": trial_rows,
+            "matched_gnn_classical_consistency": consistency,
+            "artifacts": ["existing_model_metric_metadata.csv", "existing_optuna_trial_counts.json", "existing_matched_comparison_metrics.csv"],
+        }
+
     def _scaffold_audit(self, final):
         matrix = rdFingerprintGenerator.GetMorganGenerator(radius=MORGAN_RADIUS, fpSize=MORGAN_SIZE)
         scaffold_values = final["cleaned_smiles"].apply(scaffold_smiles)
@@ -591,6 +851,7 @@ class DataAudit:
             )
         train_sizes = assignment.loc[assignment["split"] == "train", "scaffold_size"]
         test_sizes = assignment.loc[assignment["split"] == "test", "scaffold_size"]
+        test_scaffold_sizes = sizes.loc[sizes["split"] == "test", "molecules"]
         overlap_keys = train_keys.intersection(test_keys)
         overlap_smiles = train_smiles.intersection(test_smiles)
         stats = {
@@ -600,6 +861,8 @@ class DataAudit:
             "mean_scaffold_size": float(scaffold_sizes.mean()) if len(scaffold_sizes) else None,
             "scaffolds_train": int(assignment.loc[assignment["split"] == "train", "scaffold_InChI"].nunique()),
             "scaffolds_test": int(assignment.loc[assignment["split"] == "test", "scaffold_InChI"].nunique()),
+            "test_singleton_scaffolds": int((test_scaffold_sizes == 1).sum()),
+            "test_singleton_fraction": float((test_scaffold_sizes == 1).mean()) if not test_scaffold_sizes.empty else None,
             "molecules_train": int(len(train_set)),
             "molecules_test": int(len(test_set)),
             "train_fraction": float(len(train_set) / len(final)) if len(final) else None,
@@ -667,7 +930,20 @@ class DataAudit:
         for index in zero_atoms:
             structure_warnings.append({"source_index": index, "InChIkey": structure_frame.at[index, "InChIkey"], "cleaned_smiles": structure_frame.at[index, "cleaned_smiles"], "warning": "Molecule has zero atoms"})
         for index in disconnected:
-            structure_warnings.append({"source_index": index, "InChIkey": structure_frame.at[index, "InChIkey"], "cleaned_smiles": structure_frame.at[index, "cleaned_smiles"], "warning": "Disconnected fragments remain after salt removal"})
+            smiles = structure_frame.at[index, "cleaned_smiles"]
+            details = disconnected_structure_details(smiles)
+            source_columns = [
+                column for column in ["molecule_chembl_id", "parent_molecule_chembl_id", "activity_id", "record_id"]
+                if column in structure_frame
+            ]
+            structure_warnings.append({
+                "source_index": index,
+                "InChIkey": structure_frame.at[index, "InChIkey"],
+                "cleaned_smiles": smiles,
+                **{column: structure_frame.at[index, column] for column in source_columns},
+                **details,
+                "warning": "Disconnected fragments remain after salt removal",
+            })
         for item in unusual_elements:
             structure_warnings.append({**item, "warning": "Unusual element(s): " + item["elements"]})
 
@@ -682,7 +958,12 @@ class DataAudit:
         fingerprint_hashes = pd.Series(fingerprint_bytes)
         fp_duplicates = int(fingerprint_hashes.duplicated(keep="first").sum())
         fp_unique = int(fingerprint_hashes.nunique())
-        pd.DataFrame(structure_warnings, columns=["source_index", "InChIkey", "cleaned_smiles", "warning", "elements"]).to_csv(self.run_dir / "structure_warnings.csv", index=False)
+        pd.DataFrame(structure_warnings).to_csv(self.run_dir / "structure_warnings.csv", index=False)
+        disconnected_audit = pd.DataFrame([
+            row for row in structure_warnings
+            if row.get("warning") == "Disconnected fragments remain after salt removal"
+        ])
+        disconnected_audit.to_csv(self.run_dir / "disconnected_structure_audit.csv", index=False)
 
         descriptor_rows = [descriptor_values(smiles) for smiles in final["cleaned_smiles"]]
         descriptors = pd.DataFrame(descriptor_rows, index=final.index, columns=list(DESCRIPTOR_FUNCTIONS))
@@ -765,6 +1046,10 @@ class DataAudit:
                 "empty_or_invalid_cleaned_SMILES": int(structure_frame["cleaned_smiles"].isna().sum() + structure_frame["cleaned_smiles"].eq("").sum()),
                 "zero_atom_molecules": len(zero_atoms),
                 "disconnected_molecules_after_salt_removal": len(disconnected),
+                "disconnected_structure_classifications": (
+                    disconnected_audit["classification"].value_counts(dropna=False).to_dict()
+                    if not disconnected_audit.empty else {}
+                ),
                 "unusual_element_rows": len(unusual_elements),
                 "atom_count_min": min(atom_counts) if atom_counts else None,
                 "atom_count_median": float(np.median(atom_counts)) if atom_counts else None,
@@ -850,8 +1135,8 @@ class DataAudit:
             "group_mad_threshold": MAD_THRESHOLD,
             "exact_duplicate_columns": ["InChIkey", "cleaned_smiles", "PIC50"],
             "relation_filter": RELATION_FILTER,
-            "activity_filter_current": "standard_value <= 10000",
-            "activity_filter_comparison": "IC50_nM <= 10000",
+            "activity_filter_current": "IC50_nM > 0 and IC50_nM <= 10000",
+            "activity_filter_comparison": "raw standard_value <= 10000 versus normalized IC50_nM <= 10000",
             "scaffold_split_fraction": SCAFFOLD_TRAIN_FRACTION,
             "scaffold_allocation": "scaffolds sorted by group size descending; whole groups added to train while train count is below target",
             "random_seeds_in_model_code": {"optuna_tpe": 50, "random_forest": 50},
@@ -876,12 +1161,16 @@ class DataAudit:
         after_dup = self.snapshots["potential_duplicate removal"]
         unit_stage = self.snapshots["Supported-unit filter and IC50 normalization"]
         converted = self.snapshots["pIC50 conversion"]
-        after_mad = self.snapshots["Exact duplicate removal after MAD"]
+        after_mad = self.snapshots["Current-order replicate MAD <= 1.0"]
         relation_cohort = self.snapshots['standard_relation == "=" filter']
         self._unit_audit(raw, after_dup, unit_stage)
         identity_frame = self.snapshots["InChIKey generation"]
         duplicate_stats = self._duplicate_audit(converted, after_mad, current_final, identity_frame)
         current_a, normalized_b, filtering_stats = self._filtering_audit(relation_cohort)
+        replicate_sensitivity = self._replicate_qc_sensitivity(current_final, self.alternative_final)
+        provenance_audit = self._provenance_audit(current_final)
+        assay_audit = self._assay_audit(current_final)
+        model_output_audit = self._model_output_audit()
 
         relation_counts = raw.get("standard_relation", pd.Series(index=raw.index, dtype=object)).value_counts(dropna=False)
         relation_table = pd.DataFrame({
@@ -997,6 +1286,10 @@ class DataAudit:
             "features": feature_audit,
             "leakage": leakage,
             "filtering_comparison": filtering_stats,
+            "replicate_qc_sensitivity": replicate_sensitivity,
+            "provenance": provenance_audit,
+            "assay_heterogeneity": assay_audit,
+            "existing_model_outputs": model_output_audit,
             "standard_relation_counts": relation_counts_dict,
             "relation_rows_removed_from_raw": rejected_relation_count,
             "scaffold_split": scaffold_stats,
@@ -1027,7 +1320,7 @@ class DataAudit:
             "- This mode reads the saved raw CSV snapshot; it does not query ChEMBL or modify datasets.", "",
             "## 2. Dataset Flow", "",
             counts[columns].to_markdown(index=False), "",
-            "The existing validity filter runs before salt cleaning. Unit support filtering and unit normalization occur in one current method; the audit reports them together. Median aggregation is a transform and does not itself reduce row count. The current code then applies group MAD filtering, exact duplicate removal, relation filtering, and the raw `standard_value` activity cutoff.", "",
+            "The existing validity filter runs before salt cleaning. Unit support filtering and unit normalization occur in one current method; the audit reports them together. Production ordering applies exact relation and normalized `IC50_nM` activity filters before replicate QC. The alternative replicate-QC ordering is reported separately as a sensitivity analysis.", "",
             "## 3. Unit Audit", "",
             f"- Original units before normalization: `{json.dumps(summary['units']['original_unit_counts_before_normalization'], ensure_ascii=True)}`",
             f"- Unsupported or null raw unit records: {summary['units']['unsupported_or_null_unit_rows_raw']}",
